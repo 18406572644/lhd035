@@ -1,0 +1,55 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+#app {
+  width: 100%;
+  height: 100%;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #aaa;
+}
+
+@media print {
+  .app-header,
+  .sidebar,
+  .sidebar-toggle,
+  .toolbar,
+  .station-detail,
+  .zoom-indicator {
+    display: none !important;
+  }
+
+  .map-area {
+    width: 100vw;
+    height: 100vh;
+  }
+
+  .metro-map-container {
+    background: white !important;
+  }
+}

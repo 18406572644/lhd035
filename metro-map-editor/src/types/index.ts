@@ -389,3 +389,140 @@ export interface FareTableEntry {
   stationCount: number
   transferCount: number
 }
+
+export type ChangeType = 'added' | 'removed' | 'modified' | 'unchanged'
+
+export interface PropertyDiff<T = unknown> {
+  property: string
+  oldValue: T
+  newValue: T
+  changeType: ChangeType
+}
+
+export interface StationDiff {
+  stationId: string
+  stationName: string
+  changeType: ChangeType
+  oldStation?: Station
+  newStation?: Station
+  propertyDiffs: PropertyDiff[]
+}
+
+export interface LineStationOrderChange {
+  stationId: string
+  oldIndex: number
+  newIndex: number
+  action: 'added' | 'removed' | 'moved'
+}
+
+export interface LineDiff {
+  lineId: string
+  lineName: string
+  changeType: ChangeType
+  oldLine?: MetroLine
+  newLine?: MetroLine
+  propertyDiffs: PropertyDiff[]
+  stationOrderChanges: LineStationOrderChange[]
+}
+
+export interface MapDiff {
+  mapName?: PropertyDiff<string>
+  stationDiffs: StationDiff[]
+  lineDiffs: LineDiff[]
+  summary: {
+    addedStations: number
+    removedStations: number
+    modifiedStations: number
+    addedLines: number
+    removedLines: number
+    modifiedLines: number
+  }
+}
+
+export interface VersionTag {
+  id: string
+  name: string
+  description?: string
+  color?: string
+  createdAt: number
+}
+
+export interface Version {
+  id: string
+  versionNumber: number
+  branchId: string
+  timestamp: number
+  author: string
+  summary: string
+  userDescription?: string
+  data: MetroMapData
+  parentVersionId: string | null
+  tags: VersionTag[]
+  isMilestone: boolean
+  snapshotType: 'auto' | 'manual'
+}
+
+export interface Branch {
+  id: string
+  name: string
+  description?: string
+  color: string
+  createdAt: number
+  updatedAt: number
+  baseVersionId: string | null
+  baseBranchId: string | null
+  currentVersionId: string | null
+  isActive: boolean
+  isMain: boolean
+}
+
+export interface MergeConflict {
+  id: string
+  type: 'station' | 'line' | 'map-property'
+  targetId: string
+  targetName: string
+  property?: string
+  baseValue: unknown
+  theirValue: unknown
+  ourValue: unknown
+  description: string
+  resolution: 'base' | 'theirs' | 'ours' | null
+}
+
+export interface MergeResult {
+  success: boolean
+  conflicts: MergeConflict[]
+  mergedData?: MetroMapData
+  autoMergedCount: number
+  conflictCount: number
+}
+
+export interface VersionControlState {
+  branches: Branch[]
+  versions: Version[]
+  activeBranchId: string
+  selectedVersionIds: string[]
+  isDiffMode: boolean
+  diffFromVersionId: string | null
+  diffToVersionId: string | null
+  mergeSourceBranchId: string | null
+  mergeTargetBranchId: string | null
+  pendingConflicts: MergeConflict[]
+  showVersionPanel: boolean
+  currentDiff: MapDiff | null
+  lastAutoSnapshotTime: number
+}
+
+export const VERSION_STORAGE_KEYS = {
+  BRANCHES: 'metro_vc_branches',
+  VERSIONS: 'metro_vc_versions',
+  STATE: 'metro_vc_state'
+} as const
+
+export const MAX_LOCAL_VERSIONS = 20
+export const AUTO_SNAPSHOT_DEBOUNCE_MS = 3000
+export const BRANCH_COLORS = [
+  '#0065B3', '#E4002B', '#009944', '#F5A623', '#9013FE',
+  '#50E3C2', '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4',
+  '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE'
+]

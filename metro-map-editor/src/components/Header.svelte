@@ -1,12 +1,15 @@
 <script lang="ts">
   import { mapStore, selectedStationIdStore, viewStore, highlightStationIdStore } from '../stores/mapStore'
+  import { versionStore } from '../stores/versionStore'
   import type { Station, MetroLine } from '../types'
   import ExportPanel from './ExportPanel.svelte'
   import SettingsPanel from './SettingsPanel.svelte'
   import FareSettingsPanel from './FareSettingsPanel.svelte'
+  import VersionHistoryPanel from './VersionHistoryPanel.svelte'
 
   let showSettings = false
   let showFareSettings = false
+  let showVersionPanel = false
 
   let mapName = ''
   let stations: Station[] = []
@@ -15,11 +18,20 @@
   let showDropdown = false
   let filterLineId: string | null = null
   let filterTransferOnly = false
+  let activeBranchName = '主分支'
+  let versionCount = 0
 
   const unsubscribe = mapStore.subscribe(data => {
     mapName = data.mapName
     stations = data.stations
     lines = data.lines
+  })
+
+  versionStore.subscribe(state => {
+    const branch = state.branches.find(b => b.id === state.activeBranchId)
+    activeBranchName = branch?.name || '主分支'
+    versionCount = state.versions.length
+    showVersionPanel = state.showVersionPanel
   })
 
   function handleNameChange(e: Event) {
@@ -206,6 +218,25 @@
   </div>
 
   <div class="header-right">
+    <button
+      class="vc-header-btn"
+      on:click={() => versionStore.toggleVersionPanel(true)}
+      title="版本控制"
+    >
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="3" />
+        <circle cx="18" cy="6" r="2" />
+        <circle cx="6" cy="6" r="2" />
+        <circle cx="18" cy="18" r="2" />
+        <circle cx="6" cy="18" r="2" />
+        <line x1="15" y1="9" x2="16.5" y2="7.5" />
+        <line x1="9" y1="9" x2="7.5" y2="7.5" />
+        <line x1="15" y1="15" x2="16.5" y2="16.5" />
+        <line x1="9" y1="15" x2="7.5" y2="16.5" />
+      </svg>
+      <span class="vc-badge-count">{versionCount}</span>
+      <span class="vc-branch-indicator">{activeBranchName}</span>
+    </button>
     <button class="settings-btn" on:click={() => showFareSettings = true} title="票价配置">
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
         <circle cx="12" cy="12" r="10" />
@@ -225,6 +256,7 @@
 
 <SettingsPanel bind:show={showSettings} />
 <FareSettingsPanel bind:show={showFareSettings} />
+<VersionHistoryPanel show={showVersionPanel} />
 
 <style>
   .app-header {
@@ -492,5 +524,43 @@
   .settings-btn:hover {
     border-color: #0065B3;
     color: #0065B3;
+  }
+
+  .vc-header-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: #f0f5ff;
+    border: 1px solid #cce0ff;
+    border-radius: 6px;
+    color: #0065B3;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 12px;
+    font-family: inherit;
+  }
+
+  .vc-header-btn:hover {
+    background: #e6f0ff;
+    border-color: #0065B3;
+  }
+
+  .vc-badge-count {
+    background: #0065B3;
+    color: white;
+    padding: 1px 6px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 600;
+    min-width: 16px;
+    text-align: center;
+  }
+
+  .vc-branch-indicator {
+    font-size: 11px;
+    color: #666;
+    padding-left: 6px;
+    border-left: 1px solid #cce0ff;
   }
 </style>

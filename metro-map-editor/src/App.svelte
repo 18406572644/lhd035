@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount, onDestroy } from 'svelte'
   import Header from './components/Header.svelte'
   import MetroMap from './components/MetroMap.svelte'
   import Toolbar from './components/Toolbar.svelte'
@@ -10,6 +11,7 @@
   import ControlPanel3D from './components/ControlPanel3D.svelte'
   import { selectedStationIdStore, isSimulatingStore, mapStore } from './stores/mapStore'
   import { simulationStore } from './stores/simulationStore'
+  import { versionStore } from './stores/versionStore'
   import type { Scene3DConfig, ViewMode3D, MetroMapData, MetroLine } from './types'
   import { DEFAULT_SCENE_3D_CONFIG } from './types'
 
@@ -22,9 +24,20 @@
   let scene3DConfig: Scene3DConfig = { ...DEFAULT_SCENE_3D_CONFIG }
   let scene3DComponent: Scene3D
   let mapData: MetroMapData | null = null
+  let vcInitialized = false
 
   const unsubscribeMap = mapStore.subscribe(data => {
     mapData = data
+    if (data && !vcInitialized) {
+      vcInitialized = true
+      versionStore.createInitialVersionIfNeeded(data)
+    }
+  })
+
+  const unsubscribeMapForSnapshot = mapStore.subscribe(data => {
+    if (vcInitialized && data) {
+      versionStore.scheduleAutoSnapshot(() => data)
+    }
   })
 
   const unsubscribeStation = selectedStationIdStore.subscribe(id => {
@@ -79,6 +92,13 @@
   }
 
   $: linesForPanel = mapData?.lines || []
+
+  onDestroy(() => {
+    unsubscribeMap()
+    unsubscribeMapForSnapshot()
+    unsubscribeStation()
+    unsubscribeSim()
+  })
 </script>
 
 <div class="app-container">

@@ -8,6 +8,8 @@
   export let onSelectVersion: (versionId: string) => void = () => {}
   export let onSelectBranch: (branchId: string) => void = () => {}
 
+  let selectedVersionId: string | null = null
+
   interface TreeLayout {
     branchColumns: Record<string, number>
     maxColumn: number
@@ -15,18 +17,38 @@
     rowHeight: number
     columnWidth: number
     rows: Array<{
+      versionId: string
       version: Version | null
       y: number
       connections: Array<{ fromX: number; fromY: number; toX: number; toY: number; color: string }>
     }>
   }
 
-  $: layout = computeTreeLayout(branches, versions, activeBranchId)
+  let cachedLayout: TreeLayout | null = null
+  let cachedVersionIds: string = ''
+
+  $: layout = computeTreeLayoutStable(branches, versions)
+
+  function computeTreeLayoutStable(
+    allBranches: Branch[],
+    allVersions: Version[]
+  ): TreeLayout {
+    const versionIds = allVersions.map(v => v.id).sort().join(',')
+    const branchIds = allBranches.map(b => b.id).sort().join(',')
+
+    if (cachedLayout && cachedVersionIds === versionIds + '|' + branchIds) {
+      return cachedLayout
+    }
+
+    const result = computeTreeLayout(allBranches, allVersions)
+    cachedLayout = result
+    cachedVersionIds = versionIds + '|' + branchIds
+    return result
+  }
 
   function computeTreeLayout(
     allBranches: Branch[],
-    allVersions: Version[],
-    _activeBranchId: string
+    allVersions: Version[]
   ): TreeLayout {
     const branchColumns: Record<string, number> = {}
     let maxColumn = 0
@@ -72,6 +94,7 @@
       }
 
       rows.push({
+        versionId: version.id,
         version,
         y,
         connections
@@ -99,11 +122,19 @@
   }
 
   function handleVersionClick(versionId: string) {
-    onSelectVersion?.(versionId)
+    selectedVersionId = versionId
+    onSelectVersion(versionId)
   }
 
   function handleBranchClick(branchId: string) {
-    onSelectBranch?.(branchId)
+    onSelectBranch(branchId)
+  }
+
+  function getVersionNodeClass(version: Version): string {
+    const classes = ['version-node']
+    if (version.branchId === activeBranchId) classes.push('active-branch')
+    if (version.id === selectedVersionId) classes.push('selected')
+    return classes.join(' ')
   }
 </script>
 
@@ -125,7 +156,7 @@
         viewBox="0 0 {(layout.maxColumn + 1) * layout.columnWidth} {layout.rows.length * layout.rowHeight}"
         preserveAspectRatio="xMinYMin meet"
       >
-        {#each layout.rows as row}
+        {#each layout.rows as row (row.versionId)}
           {#each row.connections as conn}
             {#if Math.abs(conn.fromX - conn.toX) < 1}
               <line
@@ -153,11 +184,12 @@
           {/each}
         {/each}
 
-        {#each layout.rows as row}
+        {#each layout.rows as row (row.versionId)}
           {#if row.version}
+            {@const pos = layout.nodePositions[row.version.id]}
             <g
-              transform="translate({layout.nodePositions[row.version.id].x}, {layout.nodePositions[row.version.id].y})"
-              class="version-node"
+              transform="translate({pos.x}, {pos.y})"
+              class={getVersionNodeClass(row.version)}
               on:click={() => { if (row.version) handleVersionClick(row.version.id) }}
             >
               <circle
@@ -165,7 +197,6 @@
                 fill={getBranchColor(row.version.branchId)}
                 stroke={row.version.branchId === activeBranchId ? '#fff' : '#f5f5f5'}
                 stroke-width={row.version.branchId === activeBranchId ? 3 : 2}
-                class={row.version.branchId === activeBranchId ? 'active' : ''}
               />
               {#if row.version.isMilestone}
                 <text
@@ -187,12 +218,14 @@
       </svg>
 
       <div class="version-labels">
-        {#each layout.rows as row}
+        {#each layout.rows as row (row.versionId)}
           {#if row.version}
+            {@const pos = layout.nodePositions[row.version.id]}
             <div
               class="version-label"
-              style="top: {layout.nodePositions[row.version.id].y - 14}px; left: {(layout.maxColumn + 1) * layout.columnWidth + 8}px;"
               class:label-active={row.version.branchId === activeBranchId}
+              class:label-selected={row.version.id === selectedVersionId}
+              style="top: {pos.y - 14}px; left: {(layout.maxColumn + 1) * layout.columnWidth + 8}px;"
               on:click={() => { if (row.version) handleVersionClick(row.version.id) }}
             >
               <div class="label-header">
@@ -236,7 +269,7 @@
 
       <div class="legend-branches">
         <div class="legend-title mt">分支</div>
-        {#each branches as branch}
+        {#each branches as branch (branch.id)}
           <div
             class="legend-branch-item"
             class:legend-branch-active={branch.id === activeBranchId}
@@ -292,21 +325,22 @@
     min-width: 100%;
   }
 
-  .version-node {
+  :global(.version-node) {
     cursor: pointer;
-    transition: transform 0.2s;
   }
 
-  .version-node:hover {
-    transform: scale(1.2);
+  :global(.version-node:hover circle) {
+    filter: brightness(1.2);
   }
 
-  .version-node circle {
-    transition: all 0.2s;
-  }
-
-  .version-node circle.active {
+  :global(.version-node.active-branch circle) {
     filter: drop-shadow(0 0 4px rgba(0, 101, 179, 0.4));
+  }
+
+  :global(.version-node.selected circle) {
+    stroke: #faad14;
+    stroke-width: 3;
+    filter: drop-shadow(0 0 6px rgba(250, 173, 20, 0.5));
   }
 
   .version-labels {
@@ -326,7 +360,6 @@
     font-size: 11px;
     width: 260px;
     cursor: pointer;
-    transition: all 0.2s;
     z-index: 1;
   }
 
@@ -340,6 +373,13 @@
   .version-label.label-active {
     border-color: #0065B3;
     background: #e6f0ff;
+  }
+
+  .version-label.label-selected {
+    border-color: #faad14;
+    background: #fffbe6;
+    z-index: 5;
+    box-shadow: 0 2px 8px rgba(250, 173, 20, 0.2);
   }
 
   .label-header {
@@ -463,7 +503,6 @@
     padding: 4px 6px;
     border-radius: 4px;
     cursor: pointer;
-    transition: background 0.2s;
     flex-wrap: wrap;
   }
 

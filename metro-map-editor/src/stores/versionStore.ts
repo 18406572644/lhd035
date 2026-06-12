@@ -74,6 +74,15 @@ function createVersionStore() {
   const { subscribe, set, update } = writable<VersionControlState>(initialState)
 
   let autoSnapshotTimer: number | null = null
+  let lastSnapshotDataHash: string = ''
+
+  function computeDataHash(data: MetroMapData): string {
+    try {
+      return JSON.stringify(data)
+    } catch {
+      return ''
+    }
+  }
 
   function persistState(branches: Branch[], versions: Version[]) {
     saveBranches(branches)
@@ -96,12 +105,17 @@ function createVersionStore() {
         mainBranch.currentVersionId = version.id
         mainBranch.updatedAt = Date.now()
 
-        persistState(state.branches, [...state.versions, version])
+        lastSnapshotDataHash = computeDataHash(mapData)
+
+        persistState(
+          state.branches.map(b => b.id === mainBranch.id ? { ...mainBranch } : b),
+          [...state.versions, version]
+        )
 
         return {
           ...state,
           versions: [...state.versions, version],
-          branches: [...state.branches.map(b => b.id === mainBranch.id ? mainBranch : b)]
+          branches: state.branches.map(b => b.id === mainBranch.id ? { ...mainBranch } : b)
         }
       }
       return state
@@ -121,17 +135,25 @@ function createVersionStore() {
       const activeBranch = state.branches.find(b => b.id === state.activeBranchId)
       if (!activeBranch) return state
 
-      const latestVersion = getLatestVersionInBranch(state.versions, activeBranch.id)
-      const latestData = latestVersion?.data
+      const dataHash = computeDataHash(mapData)
 
-      if (latestData && !options.force) {
-        if (JSON.stringify(latestData) === JSON.stringify(mapData)) {
+      if (!options.force) {
+        if (dataHash && dataHash === lastSnapshotDataHash) {
+          return state
+        }
+
+        const latestVersion = getLatestVersionInBranch(state.versions, activeBranch.id)
+        const latestData = latestVersion?.data
+        if (latestData && JSON.stringify(latestData) === dataHash) {
+          lastSnapshotDataHash = dataHash
           return state
         }
       }
 
+      const latestVersion = getLatestVersionInBranch(state.versions, activeBranch.id)
+      const latestData = latestVersion?.data || null
       const versionNumber = getNextVersionNumber(state.versions, activeBranch.id)
-      const summary = generateAutoSummary(latestData || null, mapData)
+      const summary = generateAutoSummary(latestData, mapData)
 
       const version = createVersionUtil(mapData, activeBranch.id, {
         parentVersionId: activeBranch.currentVersionId,
@@ -143,11 +165,16 @@ function createVersionStore() {
         snapshotType: options.userDescription || options.isMilestone ? 'manual' : 'auto'
       })
 
-      activeBranch.currentVersionId = version.id
-      activeBranch.updatedAt = Date.now()
+      const updatedBranch: Branch = {
+        ...activeBranch,
+        currentVersionId: version.id,
+        updatedAt: Date.now()
+      }
 
       const newVersions = [...state.versions, version]
-      const newBranches = state.branches.map(b => b.id === activeBranch.id ? activeBranch : b)
+      const newBranches = state.branches.map(b => b.id === activeBranch.id ? updatedBranch : b)
+
+      lastSnapshotDataHash = dataHash
 
       persistState(newBranches, newVersions)
 
@@ -168,6 +195,10 @@ function createVersionStore() {
     autoSnapshotTimer = window.setTimeout(() => {
       const mapData = getMapData()
       if (mapData) {
+        const hash = computeDataHash(mapData)
+        if (hash && hash === lastSnapshotDataHash) {
+          return
+        }
         createSnapshot(mapData, {})
       }
     }, AUTO_SNAPSHOT_DEBOUNCE_MS)
@@ -194,12 +225,16 @@ function createVersionStore() {
             snapshotType: 'manual'
           })
 
-          activeBranch.currentVersionId = newVersion.id
-          activeBranch.updatedAt = Date.now()
+          const updatedBranch: Branch = {
+            ...activeBranch,
+            currentVersionId: newVersion.id,
+            updatedAt: Date.now()
+          }
 
           const newVersions = [...state.versions, newVersion]
-          const newBranches = state.branches.map(b => b.id === activeBranch.id ? activeBranch : b)
+          const newBranches = state.branches.map(b => b.id === activeBranch.id ? updatedBranch : b)
 
+          lastSnapshotDataHash = computeDataHash(data)
           persistState(newBranches, newVersions)
 
           return {
@@ -234,6 +269,7 @@ function createVersionStore() {
         const version = state.versions.find(v => v.id === targetBranch.currentVersionId)
         if (version) {
           resultData = deepCloneMapData(version.data)
+          lastSnapshotDataHash = computeDataHash(version.data)
         }
       }
 
@@ -257,13 +293,13 @@ function createVersionStore() {
     baseVersionId?: string,
     description?: string
   ): Branch {
-    let newBranch: Branch
+    let createdBranch: Branch | null = null
 
     update(state => {
       const activeBranch = state.branches.find(b => b.id === state.activeBranchId)
       const baseVerId = baseVersionId || activeBranch?.currentVersionId || null
 
-      newBranch = createBranchUtil(name, {
+      const newBranch: Branch = createBranchUtil(name, {
         baseBranchId: state.activeBranchId,
         baseVersionId: baseVerId,
         description
@@ -272,6 +308,8 @@ function createVersionStore() {
       if (baseVerId) {
         newBranch.currentVersionId = baseVerId
       }
+
+      createdBranch = newBranch
 
       const newBranches = [...state.branches, newBranch]
       saveBranches(newBranches)
@@ -282,7 +320,7 @@ function createVersionStore() {
       }
     })
 
-    return newBranch!
+    return createdBranch!
   }
 
   function deleteBranch(branchId: string) {

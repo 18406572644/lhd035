@@ -10,8 +10,9 @@
     alignmentGuidesStore,
     editorConfigStore
   } from '../stores/mapStore'
+  import { simulationStore } from '../stores/simulationStore'
   import { generateSmoothPath, getPointOnPath } from '../utils/path'
-  import type { Station, MetroLine, EditorConfig, DraggingState, AlignmentGuides } from '../types'
+  import type { Station, MetroLine, EditorConfig, DraggingState, AlignmentGuides, SimulationStats } from '../types'
   import StationNode from './StationNode.svelte'
   import TrainSimulation from './TrainSimulation.svelte'
 
@@ -31,6 +32,8 @@
   let editorConfig: EditorConfig
   let draggingState: DraggingState
   let alignmentGuides: AlignmentGuides
+  let simStats: SimulationStats | null = null
+  let showHeatmap = false
 
   const unsubscribeView = viewStore.subscribe(v => {
     scale = v.scale
@@ -44,6 +47,13 @@
 
   const unsubscribeSim = isSimulatingStore.subscribe(v => {
     isSimulating = v
+  })
+
+  const unsubscribeSimState = simulationStore.subscribe(state => {
+    simStats = state.stats
+    if (state.isRunning) {
+      isSimulating = true
+    }
   })
 
   const unsubscribeMap = mapStore.subscribe(v => {
@@ -290,10 +300,45 @@
     window.addEventListener('keyup', handleKeyUp)
   })
 
+  function getCongestionColor(congestion: number, maxCongestion: number): string {
+    if (maxCongestion === 0) return 'rgba(0, 255, 0, 0.3)'
+    const ratio = congestion / maxCongestion
+    if (ratio < 0.3) return `rgba(0, 255, 0, ${0.3 + ratio * 0.3})`
+    if (ratio < 0.6) return `rgba(255, 255, 0, ${0.4 + ratio * 0.3})`
+    return `rgba(255, ${Math.floor(255 * (1 - ratio))}, 0, ${0.5 + ratio * 0.3})`
+  }
+
+  function toggleHeatmap() {
+    showHeatmap = !showHeatmap
+  }
+
+  function getLineCongestion(lineId: string): number[] {
+    return simStats?.lineCongestion?.[lineId] || []
+  }
+
+  function getMaxCongestion(congestion: number[]): number {
+    return Math.max(...congestion, 1)
+  }
+
+  function getStationById(stationId: string): Station | undefined {
+    return mapData?.stations.find((s: Station) => s.id === stationId)
+  }
+
+  function getHeatmapStroke(lineId: string, segmentIndex: number): string {
+    const congestion = getLineCongestion(lineId)
+    const maxCongestion = getMaxCongestion(congestion)
+    return getCongestionColor(congestion[segmentIndex] || 0, maxCongestion)
+  }
+
+  function shouldShowHeatmap(lineId: string): boolean {
+    return showHeatmap && isSimulating && getLineCongestion(lineId).length > 0
+  }
+
   onDestroy(() => {
     unsubscribeView()
     unsubscribeTool()
     unsubscribeSim()
+    unsubscribeSimState()
     unsubscribeMap()
     unsubscribeEditorConfig()
     unsubscribeDragging()
@@ -390,6 +435,29 @@
 
       {#if mapData}
         {#each mapData.lines as line}
+          {#if shouldShowHeatmap(line.id)}
+            {#each line.stationIds as stationId, i}
+              {#if i < line.stationIds.length - 1}
+                {#each [getStationById(stationId)] as startStation}
+                  {#each [getStationById(line.stationIds[i + 1])] as endStation}
+                    {#if startStation && endStation}
+                      <line
+                        x1={startStation.x}
+                        y1={startStation.y}
+                        x2={endStation.x}
+                        y2={endStation.y}
+                        stroke={getHeatmapStroke(line.id, i)}
+                        stroke-width="12"
+                        stroke-linecap="round"
+                        opacity="0.6"
+                      />
+                    {/if}
+                  {/each}
+                {/each}
+              {/if}
+            {/each}
+          {/if}
+
           <path
             d={getLinePath(line)}
             fill="none"
@@ -404,8 +472,7 @@
         {#each mapData.lines as line}
           {#if isSimulating}
             <TrainSimulation
-              stations={getLineStations(line)}
-              color={line.color}
+              lineId={line.id}
             />
           {/if}
         {/each}
@@ -422,6 +489,16 @@
   <div class="zoom-indicator">
     {Math.round(scale * 100)}%
   </div>
+
+  {#if isSimulating}
+    <button
+      class="heatmap-toggle"
+      class:active={showHeatmap}
+      on:click={toggleHeatmap}
+    >
+      🔥 热力图 {showHeatmap ? '开' : '关'}
+    </button>
+  {/if}
 
   {#if draggingState.isDragging}
     <div class="coord-tooltip">
@@ -448,6 +525,8 @@
     overflow: hidden;
     background: #fafafa;
     cursor: grab;
+    padding-right: 0;
+    transition: padding-right 0.3s;
   }
 
   .metro-map-container.dragging {
@@ -566,5 +645,35 @@
     border-radius: 4px;
     font-size: 11px;
     font-weight: 600;
+  }
+
+  .heatmap-toggle {
+    position: absolute;
+    bottom: 20px;
+    right: 100px;
+    background: rgba(255, 255, 255, 0.95);
+    padding: 8px 14px;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    color: #666;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    transition: all 0.2s;
+  }
+
+  .heatmap-toggle:hover {
+    background: #f0f5ff;
+    color: #0065B3;
+  }
+
+  .heatmap-toggle.active {
+    background: #ff6b6b;
+    color: white;
+  }
+
+  .heatmap-toggle.active:hover {
+    background: #ff5252;
   }
 </style>

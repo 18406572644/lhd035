@@ -154,3 +154,114 @@ export interface AlignmentGuides {
   snapVertical: number | null
   snapHorizontal: number | null
 }
+
+export type TrainDirection = 'up' | 'down'
+
+export type DispatchMode = 'fixed_interval' | 'peak_offpeak' | 'express_local' | 'custom_timetable'
+
+export interface TrainConfig {
+  id: string
+  trainNumber: string
+  lineId: string
+  direction: TrainDirection
+  startTime: number
+  totalDuration: number
+  averageSpeed: number
+  isExpress: boolean
+  skipStationIds: string[]
+  capacity: number
+  loadFactor: number
+}
+
+export interface PeakConfig {
+  peakStart: number
+  peakEnd: number
+  peakInterval: number
+  offpeakInterval: number
+}
+
+export interface TimetableEntry {
+  trainNumber: string
+  lineId: string
+  direction: TrainDirection
+  startTime: number
+  stationTimes: { stationId: string; arrivalTime: number; departureTime: number }[]
+}
+
+export interface SimulationConfig {
+  dispatchMode: DispatchMode
+  fixedInterval: number
+  peakConfig: PeakConfig
+  defaultStopDuration: number
+  transferStopDuration: number
+  safetyDistance: number
+  startTime: number
+  endTime: number
+  timetables: TimetableEntry[]
+}
+
+export const DEFAULT_SIMULATION_CONFIG: SimulationConfig = {
+  dispatchMode: 'fixed_interval',
+  fixedInterval: 300,
+  peakConfig: {
+    peakStart: 7 * 3600,
+    peakEnd: 9 * 3600,
+    peakInterval: 180,
+    offpeakInterval: 420
+  },
+  defaultStopDuration: 30,
+  transferStopDuration: 45,
+  safetyDistance: 0.02,
+  startTime: 6 * 3600,
+  endTime: 23 * 3600,
+  timetables: []
+}
+
+export type TrainStatus = 'waiting' | 'running' | 'stopped' | 'finished' | 'delayed' | 'broken'
+
+export interface LiveTrain {
+  id: string
+  config: TrainConfig
+  status: TrainStatus
+  progress: number
+  currentStationIndex: number
+  speed: number
+  delaySeconds: number
+  stopTimeRemaining: number
+  passengers: number
+  doorAnimPhase: number
+  previousStationId: string | null
+  nextStationId: string | null
+}
+
+export interface LiveStation {
+  id: string
+  waitingPassengers: number
+  totalPassengersServed: number
+  avgWaitTime: number
+  doorOpen: boolean
+  doorAnimPhase: number
+}
+
+export interface SimulationStats {
+  onlineTrainCount: number
+  onTimeRate: number
+  totalPassengers: number
+  lineIntervals: Record<string, number>
+  stationWaitTimes: Record<string, number[]>
+  lineCongestion: Record<string, number[]>
+  totalDelays: number
+  trainsPerHour: number
+}
+
+export interface SimulationState {
+  isRunning: boolean
+  currentTime: number
+  speed: number
+  trains: LiveTrain[]
+  stations: Record<string, LiveStation>
+  config: SimulationConfig
+  stats: SimulationStats
+  selectedTrainId: string | null
+  brokenTrainIds: string[]
+}

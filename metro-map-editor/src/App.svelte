@@ -5,13 +5,16 @@
   import LinePanel from './components/LinePanel.svelte'
   import StationDetail from './components/StationDetail.svelte'
   import ValidationPanel from './components/ValidationPanel.svelte'
+  import SimulationPanel from './components/SimulationPanel.svelte'
   import Scene3D from './components/Scene3D.svelte'
   import ControlPanel3D from './components/ControlPanel3D.svelte'
   import { selectedStationIdStore, isSimulatingStore, mapStore } from './stores/mapStore'
+  import { simulationStore } from './stores/simulationStore'
   import type { Scene3DConfig, ViewMode3D, MetroMapData, MetroLine } from './types'
   import { DEFAULT_SCENE_3D_CONFIG } from './types'
 
   let showSidebar = true
+  let showSimPanel = false
   let selectedStationId: string | null = null
   let isSimulating = false
   let viewMode: '2d' | '3d' = '2d'
@@ -34,6 +37,13 @@
 
   function toggleSidebar() {
     showSidebar = !showSidebar
+  }
+
+  function toggleSimPanel() {
+    showSimPanel = !showSimPanel
+    if (showSimPanel) {
+      simulationStore.init()
+    }
   }
 
   function switchTo2D() {
@@ -60,6 +70,12 @@
 
   function toggleSimulation() {
     isSimulatingStore.update(v => !v)
+    if (!isSimulating) {
+      showSimPanel = true
+      simulationStore.start()
+    } else {
+      simulationStore.pause()
+    }
   }
 
   $: linesForPanel = mapData?.lines || []
@@ -104,6 +120,26 @@
         <StationDetail />
       {:else}
         <Scene3D bind:this={scene3DComponent} config={scene3DConfig} />
+      {/if}
+
+      {#if showSimPanel && viewMode === '2d'}
+        <SimulationPanel />
+      {/if}
+
+      {#if viewMode === '2d'}
+        <div class="sim-toggle">
+          <button
+            class="sim-toggle-btn"
+            class:active={showSimPanel}
+            on:click={toggleSimPanel}
+            title="仿真控制"
+          >
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="5 3 19 12 5 21 5 3" />
+            </svg>
+            仿真
+          </button>
+        </div>
       {/if}
 
       <div class="view-switcher">
@@ -258,6 +294,45 @@
   }
 
   .view-btn.active:hover {
+    background: #005290;
+  }
+
+  .sim-toggle {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    z-index: 30;
+    display: flex;
+    gap: 8px;
+  }
+
+  .sim-toggle-btn {
+    padding: 8px 16px;
+    border: none;
+    background: white;
+    color: #333;
+    cursor: pointer;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .sim-toggle-btn:hover {
+    background: #f0f5ff;
+    color: #0065B3;
+  }
+
+  .sim-toggle-btn.active {
+    background: #0065B3;
+    color: white;
+  }
+
+  .sim-toggle-btn.active:hover {
     background: #005290;
   }
 </style>

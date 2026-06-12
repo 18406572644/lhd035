@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onDestroy } from 'svelte'
   import { selectedStationIdStore, toolModeStore, mapStore, highlightStationIdStore, validationResultStore, draggingStateStore } from '../stores/mapStore'
-  import type { Station, ValidationSeverity, DraggingState } from '../types'
+  import { simulationStore } from '../stores/simulationStore'
+  import type { Station, ValidationSeverity, DraggingState, LiveStation } from '../types'
 
   export let station: Station
 
@@ -21,6 +22,9 @@
     currentY: 0,
     shiftPressed: false
   }
+  let liveStation: LiveStation | null = null
+  let isSimulating = false
+  let waitingPassengers = 0
 
   const unsubscribeSelected = selectedStationIdStore.subscribe(id => {
     isSelected = id === station.id
@@ -57,6 +61,12 @@
     draggingState = s
   })
 
+  const unsubscribeSimulation = simulationStore.subscribe(state => {
+    isSimulating = state.isRunning
+    liveStation = state.stations[station.id] || null
+    waitingPassengers = liveStation?.waitingPassengers || 0
+  })
+
   function handleClick(e: Event) {
     e.stopPropagation()
     if (toolMode === 'delete') {
@@ -91,12 +101,27 @@
   $: displayX = isThisDragging ? draggingState.currentX : station.x
   $: displayY = isThisDragging ? draggingState.currentY : station.y
 
+  $: doorOpen = liveStation?.doorOpen || false
+  $: doorAnimPhase = liveStation?.doorAnimPhase || 0
+
+  function getDoorGlowOpacity(): number {
+    if (!isSimulating || !doorOpen) return 0
+    return 0.3 + doorAnimPhase * 0.7
+  }
+
+  function getStationFill(): string {
+    if (!isSimulating || !doorOpen) return 'white'
+    const intensity = Math.floor(doorAnimPhase * 255)
+    return `rgb(255, ${255 - intensity * 0.5}, ${255 - intensity})`
+  }
+
   onDestroy(() => {
     unsubscribeSelected()
     unsubscribeTool()
     unsubscribeHighlight()
     unsubscribeValidation()
     unsubscribeDragging()
+    unsubscribeSimulation()
   })
 </script>
 
@@ -110,15 +135,25 @@
   class:issue-error={highestSeverity === 'error'}
   class:issue-warning={highestSeverity === 'warning'}
   class:issue-info={highestSeverity === 'info'}
+  class:door-open={doorOpen && isSimulating}
   transform={`translate(${displayX}, ${displayY})`}
   on:click={handleClick}
   on:mousedown={handleMouseDown}
 >
+  {#if isSimulating && doorOpen}
+    <circle
+      class="door-glow"
+      r={station.isTransfer ? 16 : 12}
+      fill="#4CAF50"
+      opacity={getDoorGlowOpacity()}
+    />
+  {/if}
+
   {#if station.isTransfer}
-    <circle r="10" fill="white" stroke="#333" stroke-width="2" />
-    <circle r="5" fill="#333" />
+    <circle r="10" fill={getStationFill()} stroke="#333" stroke-width="2" />
+    <circle r="5" fill={doorOpen && isSimulating ? '#4CAF50' : '#333'} />
   {:else}
-    <circle r="6" fill="white" stroke="#333" stroke-width="2" />
+    <circle r="6" fill={getStationFill()} stroke="#333" stroke-width="2" />
   {/if}
 
   <text
@@ -145,6 +180,29 @@
     <g class="issue-indicator">
       <circle r="8" class="issue-bg" />
       <text class="issue-icon" text-anchor="middle" dominant-baseline="central">!</text>
+    </g>
+  {/if}
+
+  {#if isSimulating && waitingPassengers > 0}
+    <g class="passenger-indicator" transform="translate(0, -14)">
+      <rect
+        x="-10"
+        y="-8"
+        width="20"
+        height="12"
+        rx="3"
+        fill="rgba(0, 101, 179, 0.9)"
+      />
+      <text
+        text-anchor="middle"
+        dominant-baseline="central"
+        y="-1"
+        font-size="9"
+        font-weight="bold"
+        fill="white"
+      >
+        {waitingPassengers}
+      </text>
     </g>
   {/if}
 </g>
@@ -262,5 +320,34 @@
     50% {
       transform: translate(10px, -10px) scale(1.2);
     }
+  }
+
+  .door-glow {
+    animation: door-pulse 0.5s ease-in-out infinite alternate;
+  }
+
+  @keyframes door-pulse {
+    from { opacity: 0.3; }
+    to { opacity: 0.8; }
+  }
+
+  .station-node.door-open circle:nth-of-type(2),
+  .station-node.door-open circle:first-of-type {
+    animation: door-flash 0.6s ease-in-out infinite alternate;
+  }
+
+  @keyframes door-flash {
+    from { filter: brightness(1); }
+    to { filter: brightness(1.4); }
+  }
+
+  .passenger-indicator {
+    pointer-events: none;
+    animation: passenger-bounce 2s ease-in-out infinite;
+  }
+
+  @keyframes passenger-bounce {
+    0%, 100% { transform: translate(0, -14px); }
+    50% { transform: translate(0, -16px); }
   }
 </style>

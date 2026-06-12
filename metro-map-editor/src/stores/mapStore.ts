@@ -1,6 +1,6 @@
 import { writable, derived, get } from 'svelte/store'
-import type { MetroMapData, Station, MetroLine, ViewState, ToolMode, StationDetail, ValidationResult, ValidationRuleConfig, ValidationIssue } from '../types'
-import { DEFAULT_VALIDATION_RULES } from '../types'
+import type { MetroMapData, Station, MetroLine, ViewState, ToolMode, StationDetail, ValidationResult, ValidationRuleConfig, ValidationIssue, EditorConfig, DraggingState, AlignmentGuides } from '../types'
+import { DEFAULT_VALIDATION_RULES, DEFAULT_EDITOR_CONFIG } from '../types'
 import { generateId } from '../utils/path'
 import { getSampleData, saveMapData, loadMapData } from '../utils/storage'
 import { validateMapData, fixIssue } from '../utils/validation'
@@ -311,3 +311,58 @@ export function fixAllValidationIssues() {
   }
   mapStore.set(currentData)
 }
+
+const EDITOR_CONFIG_KEY = 'metro_editor_config'
+
+function loadEditorConfig(): EditorConfig {
+  try {
+    const saved = localStorage.getItem(EDITOR_CONFIG_KEY)
+    if (saved) {
+      return { ...DEFAULT_EDITOR_CONFIG, ...JSON.parse(saved) }
+    }
+  } catch (e) {
+    console.error('Failed to load editor config:', e)
+  }
+  return { ...DEFAULT_EDITOR_CONFIG }
+}
+
+export const editorConfigStore = writable<EditorConfig>(loadEditorConfig())
+
+editorConfigStore.subscribe(config => {
+  try {
+    localStorage.setItem(EDITOR_CONFIG_KEY, JSON.stringify(config))
+  } catch (e) {
+    console.error('Failed to save editor config:', e)
+  }
+})
+
+export function toggleSnapToGrid() {
+  editorConfigStore.update(c => ({ ...c, snapToGrid: !c.snapToGrid }))
+}
+
+export function setGridSize(size: number) {
+  editorConfigStore.update(c => ({ ...c, gridSize: Math.max(10, Math.min(200, size)) }))
+}
+
+export function toggleAlignmentGuides() {
+  editorConfigStore.update(c => ({ ...c, showAlignmentGuides: !c.showAlignmentGuides }))
+}
+
+export const draggingStateStore = writable<DraggingState>({
+  isDragging: false,
+  stationId: null,
+  startX: 0,
+  startY: 0,
+  startStationX: 0,
+  startStationY: 0,
+  currentX: 0,
+  currentY: 0,
+  shiftPressed: false
+})
+
+export const alignmentGuidesStore = writable<AlignmentGuides>({
+  vertical: [],
+  horizontal: [],
+  snapVertical: null,
+  snapHorizontal: null
+})

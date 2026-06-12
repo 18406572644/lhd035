@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy } from 'svelte'
-  import { selectedStationIdStore, toolModeStore, mapStore, highlightStationIdStore, validationResultStore } from '../stores/mapStore'
-  import type { Station, ValidationSeverity } from '../types'
+  import { selectedStationIdStore, toolModeStore, mapStore, highlightStationIdStore, validationResultStore, draggingStateStore } from '../stores/mapStore'
+  import type { Station, ValidationSeverity, DraggingState } from '../types'
 
   export let station: Station
 
@@ -10,6 +10,17 @@
   let toolMode: string = 'select'
   let hasIssue = false
   let highestSeverity: ValidationSeverity | null = null
+  let draggingState: DraggingState = {
+    isDragging: false,
+    stationId: null,
+    startX: 0,
+    startY: 0,
+    startStationX: 0,
+    startStationY: 0,
+    currentX: 0,
+    currentY: 0,
+    shiftPressed: false
+  }
 
   const unsubscribeSelected = selectedStationIdStore.subscribe(id => {
     isSelected = id === station.id
@@ -42,6 +53,10 @@
     }
   })
 
+  const unsubscribeDragging = draggingStateStore.subscribe(s => {
+    draggingState = s
+  })
+
   function handleClick(e: Event) {
     e.stopPropagation()
     if (toolMode === 'delete') {
@@ -53,16 +68,35 @@
     }
   }
 
-  function handleMouseDown(e: Event) {
-    if (toolMode !== 'edit') return
+  function handleMouseDown(e: MouseEvent) {
+    if (e.button !== 0) return
+    if (toolMode !== 'edit' && toolMode !== 'select') return
     e.stopPropagation()
+    e.preventDefault()
+    selectedStationIdStore.set(station.id)
+    draggingStateStore.set({
+      isDragging: true,
+      stationId: station.id,
+      startX: e.clientX,
+      startY: e.clientY,
+      startStationX: station.x,
+      startStationY: station.y,
+      currentX: station.x,
+      currentY: station.y,
+      shiftPressed: e.shiftKey
+    })
   }
+
+  $: isThisDragging = draggingState.isDragging && draggingState.stationId === station.id
+  $: displayX = isThisDragging ? draggingState.currentX : station.x
+  $: displayY = isThisDragging ? draggingState.currentY : station.y
 
   onDestroy(() => {
     unsubscribeSelected()
     unsubscribeTool()
     unsubscribeHighlight()
     unsubscribeValidation()
+    unsubscribeDragging()
   })
 </script>
 
@@ -70,12 +104,13 @@
   class="station-node"
   class:selected={isSelected}
   class:highlighted={isHighlighted}
+  class:dragging={isThisDragging}
   class:transfer={station.isTransfer}
   class:has-issue={hasIssue}
   class:issue-error={highestSeverity === 'error'}
   class:issue-warning={highestSeverity === 'warning'}
   class:issue-info={highestSeverity === 'info'}
-  transform={`translate(${station.x}, ${station.y})`}
+  transform={`translate(${displayX}, ${displayY})`}
   on:click={handleClick}
   on:mousedown={handleMouseDown}
 >
@@ -117,6 +152,15 @@
 <style>
   .station-node {
     cursor: pointer;
+  }
+
+  .station-node.dragging {
+    cursor: grabbing;
+    opacity: 0.85;
+  }
+
+  .station-node.dragging circle {
+    filter: drop-shadow(0 2px 8px rgba(0, 101, 179, 0.6));
   }
 
   .station-node:hover circle {

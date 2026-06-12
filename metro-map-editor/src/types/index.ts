@@ -121,3 +121,36 @@ export const DEFAULT_SCENE_3D_CONFIG: Scene3DConfig = {
   firstPersonLineId: null,
   firstPersonFollowTrain: true
 }
+
+export interface EditorConfig {
+  snapToGrid: boolean
+  gridSize: number
+  showAlignmentGuides: boolean
+  alignmentThreshold: number
+}
+
+export const DEFAULT_EDITOR_CONFIG: EditorConfig = {
+  snapToGrid: true,
+  gridSize: 40,
+  showAlignmentGuides: true,
+  alignmentThreshold: 8
+}
+
+export interface DraggingState {
+  isDragging: boolean
+  stationId: string | null
+  startX: number
+  startY: number
+  startStationX: number
+  startStationY: number
+  currentX: number
+  currentY: number
+  shiftPressed: boolean
+}
+
+export interface AlignmentGuides {
+  vertical: number[]
+  horizontal: number[]
+  snapVertical: number | null
+  snapHorizontal: number | null
+}

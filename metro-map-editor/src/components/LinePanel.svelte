@@ -9,6 +9,10 @@
   let newLineName = ''
   let newLineColor = '#0065B3'
 
+  let dragStationId: string | null = null
+  let dragOverIndex: number = -1
+  let dragLineId: string | null = null
+
   const predefinedColors = [
     '#E4002B',
     '#009944',
@@ -81,6 +85,112 @@
       mapStore.addStationToLine(lineId, stationId)
     }
   }
+
+  function handleDragStart(e: DragEvent, stationId: string, lineId: string) {
+    dragStationId = stationId
+    dragLineId = lineId
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'move'
+      e.dataTransfer.setData('text/plain', stationId)
+    }
+    const target = e.currentTarget as HTMLElement
+    target.classList.add('dragging')
+  }
+
+  function handleDragEnd(e: DragEvent) {
+    dragStationId = null
+    dragOverIndex = -1
+    dragLineId = null
+    const target = e.currentTarget as HTMLElement
+    target.classList.remove('dragging')
+  }
+
+  function handleDragOver(e: DragEvent, index: number, lineId: string) {
+    e.preventDefault()
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'move'
+    }
+    if (dragLineId === lineId) {
+      dragOverIndex = index
+    }
+  }
+
+  function handleDragLeave() {
+    dragOverIndex = -1
+  }
+
+  function handleDrop(e: DragEvent, targetIndex: number, lineId: string) {
+    e.preventDefault()
+    if (!dragStationId || dragLineId !== lineId) return
+
+    const line = lines.find(l => l.id === lineId)
+    if (!line) return
+
+    const currentIndex = line.stationIds.indexOf(dragStationId)
+    if (currentIndex === -1 || currentIndex === targetIndex) {
+      dragStationId = null
+      dragOverIndex = -1
+      dragLineId = null
+      return
+    }
+
+    const newStationIds = [...line.stationIds]
+    newStationIds.splice(currentIndex, 1)
+    const adjustedIndex = targetIndex > currentIndex ? targetIndex - 1 : targetIndex
+    newStationIds.splice(adjustedIndex, 0, dragStationId)
+
+    mapStore.reorderStationsInLine(lineId, newStationIds)
+
+    dragStationId = null
+    dragOverIndex = -1
+    dragLineId = null
+  }
+
+  function moveStationToStart(lineId: string, stationId: string) {
+    const line = lines.find(l => l.id === lineId)
+    if (!line) return
+    const idx = line.stationIds.indexOf(stationId)
+    if (idx <= 0) return
+    const newIds = [...line.stationIds]
+    newIds.splice(idx, 1)
+    newIds.unshift(stationId)
+    mapStore.reorderStationsInLine(lineId, newIds)
+  }
+
+  function moveStationToEnd(lineId: string, stationId: string) {
+    const line = lines.find(l => l.id === lineId)
+    if (!line) return
+    const idx = line.stationIds.indexOf(stationId)
+    if (idx === -1 || idx === line.stationIds.length - 1) return
+    const newIds = [...line.stationIds]
+    newIds.splice(idx, 1)
+    newIds.push(stationId)
+    mapStore.reorderStationsInLine(lineId, newIds)
+  }
+
+  function moveStationUp(lineId: string, stationId: string) {
+    const line = lines.find(l => l.id === lineId)
+    if (!line) return
+    const idx = line.stationIds.indexOf(stationId)
+    if (idx <= 0) return
+    const newIds = [...line.stationIds]
+    const temp = newIds[idx - 1]
+    newIds[idx - 1] = newIds[idx]
+    newIds[idx] = temp
+    mapStore.reorderStationsInLine(lineId, newIds)
+  }
+
+  function moveStationDown(lineId: string, stationId: string) {
+    const line = lines.find(l => l.id === lineId)
+    if (!line) return
+    const idx = line.stationIds.indexOf(stationId)
+    if (idx === -1 || idx >= line.stationIds.length - 1) return
+    const newIds = [...line.stationIds]
+    const temp = newIds[idx]
+    newIds[idx] = newIds[idx + 1]
+    newIds[idx + 1] = temp
+    mapStore.reorderStationsInLine(lineId, newIds)
+  }
 </script>
 
 <div class="line-panel">
@@ -139,18 +249,78 @@
 
         {#if selectedLineId === line.id}
           <div class="station-list">
-            {#each getLineStations(line) as station}
+            {#each getLineStations(line) as station, index}
+              <div
+                class="drag-insert-indicator"
+                class:visible={dragOverIndex === index && dragStationId !== station.id}
+                on:dragover|preventDefault={() => {}}
+              />
               <div
                 class="station-item"
+                class:dragging={dragStationId === station.id}
+                class:hover-active={true}
+                draggable="true"
+                on:dragstart={(e) => handleDragStart(e, station.id, line.id)}
+                on:dragend={handleDragEnd}
+                on:dragover={(e) => handleDragOver(e, index, line.id)}
+                on:dragleave={handleDragLeave}
+                on:drop={(e) => handleDrop(e, index, line.id)}
                 on:click|stopPropagation={() => handleStationClick(station.id)}
               >
+                <div class="station-drag-handle" title="拖拽排序">
+                  <svg viewBox="0 0 16 16" width="12" height="12" fill="#bbb">
+                    <circle cx="4" cy="3" r="1.5" />
+                    <circle cx="12" cy="3" r="1.5" />
+                    <circle cx="4" cy="8" r="1.5" />
+                    <circle cx="12" cy="8" r="1.5" />
+                    <circle cx="4" cy="13" r="1.5" />
+                    <circle cx="12" cy="13" r="1.5" />
+                  </svg>
+                </div>
                 <span class="station-dot" class:transfer={station.isTransfer} />
                 <span class="station-name">{station.name}</span>
                 {#if station.isTransfer}
                   <span class="transfer-tag">换乘</span>
                 {/if}
+                <div class="station-order-btns">
+                  <button
+                    class="order-btn"
+                    on:click|stopPropagation={() => moveStationToStart(line.id, station.id)}
+                    title="移到起点"
+                    disabled={index === 0}
+                  >
+                    ⇤
+                  </button>
+                  <button
+                    class="order-btn"
+                    on:click|stopPropagation={() => moveStationUp(line.id, station.id)}
+                    title="上移"
+                    disabled={index === 0}
+                  >
+                    ↑
+                  </button>
+                  <button
+                    class="order-btn"
+                    on:click|stopPropagation={() => moveStationDown(line.id, station.id)}
+                    title="下移"
+                    disabled={index === getLineStations(line).length - 1}
+                  >
+                    ↓
+                  </button>
+                  <button
+                    class="order-btn"
+                    on:click|stopPropagation={() => moveStationToEnd(line.id, station.id)}
+                    title="移到终点"
+                    disabled={index === getLineStations(line).length - 1}
+                  >
+                    ⇥
+                  </button>
+                </div>
               </div>
             {/each}
+            {#if getLineStations(line).length > 0 && dragOverIndex === getLineStations(line).length}
+              <div class="drag-insert-indicator visible" />
+            {/if}
             <button class="add-station-btn" on:click|stopPropagation={() => addStationToLine(line.id)}>
               + 添加站点
             </button>
@@ -342,24 +512,60 @@
   }
 
   .station-list {
-    padding: 0 12px 12px 36px;
+    padding: 0 12px 12px 20px;
     display: flex;
     flex-direction: column;
     gap: 2px;
   }
 
+  .drag-insert-indicator {
+    height: 0;
+    border-top: 2px solid transparent;
+    transition: all 0.15s;
+    border-radius: 1px;
+  }
+
+  .drag-insert-indicator.visible {
+    border-top-color: #0065B3;
+    margin: 2px 0;
+  }
+
   .station-item {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     padding: 6px 8px;
     border-radius: 4px;
     font-size: 13px;
-    transition: background 0.2s;
+    transition: background 0.2s, box-shadow 0.2s, opacity 0.2s;
+    cursor: grab;
+    position: relative;
   }
 
   .station-item:hover {
     background: #e8f0ff;
+  }
+
+  .station-item.dragging {
+    opacity: 0.4;
+    cursor: grabbing;
+    background: #e8f0ff;
+    box-shadow: 0 2px 8px rgba(0, 101, 179, 0.15);
+  }
+
+  .station-drag-handle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: grab;
+    padding: 2px;
+    opacity: 0;
+    transition: opacity 0.2s;
+    flex-shrink: 0;
+  }
+
+  .station-item:hover .station-drag-handle {
+    opacity: 1;
   }
 
   .station-dot {
@@ -368,6 +574,7 @@
     border-radius: 50%;
     background: white;
     border: 2px solid #333;
+    flex-shrink: 0;
   }
 
   .station-dot.transfer {
@@ -379,6 +586,9 @@
   .station-name {
     flex: 1;
     color: #555;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .transfer-tag {
@@ -387,6 +597,45 @@
     background: #fff0f6;
     color: #eb2f96;
     border-radius: 10px;
+    flex-shrink: 0;
+  }
+
+  .station-order-btns {
+    display: flex;
+    gap: 1px;
+    opacity: 0;
+    transition: opacity 0.2s;
+    flex-shrink: 0;
+  }
+
+  .station-item:hover .station-order-btns {
+    opacity: 1;
+  }
+
+  .order-btn {
+    width: 20px;
+    height: 20px;
+    border: none;
+    background: transparent;
+    color: #999;
+    cursor: pointer;
+    font-size: 11px;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: all 0.15s;
+  }
+
+  .order-btn:hover:not(:disabled) {
+    background: #0065B3;
+    color: white;
+  }
+
+  .order-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.3;
   }
 
   .add-station-btn {

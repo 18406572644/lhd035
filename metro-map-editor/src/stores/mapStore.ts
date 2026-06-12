@@ -210,6 +210,8 @@ export const selectedLineIdStore = writable<string | null>(null)
 
 export const isSimulatingStore = writable(false)
 
+export const highlightStationIdStore = writable<string | null>(null)
+
 export const selectedStationDetail = derived<
   [typeof mapStore, typeof selectedStationIdStore],
   StationDetail | null

@@ -1,10 +1,11 @@
 <script lang="ts">
-  import { selectedStationIdStore, toolModeStore, mapStore } from '../stores/mapStore'
+  import { selectedStationIdStore, toolModeStore, mapStore, highlightStationIdStore } from '../stores/mapStore'
   import type { Station } from '../types'
 
   export let station: Station
 
   let isSelected = false
+  let isHighlighted = false
   let toolMode: string = 'select'
 
   const unsubscribeSelected = selectedStationIdStore.subscribe(id => {
@@ -13,6 +14,10 @@
 
   const unsubscribeTool = toolModeStore.subscribe(v => {
     toolMode = v
+  })
+
+  const unsubscribeHighlight = highlightStationIdStore.subscribe(id => {
+    isHighlighted = id === station.id
   })
 
   function handleClick(e: Event) {
@@ -35,6 +40,7 @@
 <g
   class="station-node"
   class:selected={isSelected}
+  class:highlighted={isHighlighted}
   class:transfer={station.isTransfer}
   transform={`translate(${station.x}, ${station.y})`}
   on:click={handleClick}
@@ -60,6 +66,11 @@
 
   {#if isSelected}
     <circle r="14" fill="none" stroke="#0065B3" stroke-width="2" stroke-dasharray="4 2" class="selected-ring" />
+  {/if}
+
+  {#if isHighlighted}
+    <circle r="18" fill="none" stroke="#ff9800" stroke-width="3" class="highlight-ring" />
+    <circle r="22" fill="none" stroke="#ff9800" stroke-width="2" opacity="0.4" class="highlight-ring-outer" />
   {/if}
 </g>
 
@@ -89,6 +100,34 @@
     }
     50% {
       opacity: 0.5;
+    }
+  }
+
+  .highlight-ring {
+    animation: highlight-flash 0.5s ease-in-out 3;
+  }
+
+  .highlight-ring-outer {
+    animation: highlight-expand 0.5s ease-in-out 3;
+  }
+
+  @keyframes highlight-flash {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.3;
+    }
+  }
+
+  @keyframes highlight-expand {
+    0%, 100% {
+      opacity: 0.4;
+      r: 22;
+    }
+    50% {
+      opacity: 0;
+      r: 28;
     }
   }
 </style>

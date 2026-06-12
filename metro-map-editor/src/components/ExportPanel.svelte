@@ -1,7 +1,8 @@
 <script lang="ts">
   import { get } from 'svelte/store'
-  import { mapStore, validationResultStore } from '../stores/mapStore'
+  import { mapStore, validationResultStore, fareConfigStore } from '../stores/mapStore'
   import { getSampleData, mockFetchMapData, clearMapData, saveMapData } from '../utils/storage'
+  import { downloadFareTableCSV } from '../utils/fare'
 
   let showExport = false
   let showImport = false
@@ -84,6 +85,13 @@
     showExport = false
   }
 
+  function exportFareTable() {
+    const mapData = get(mapStore)
+    const fareConfig = get(fareConfigStore)
+    downloadFareTableCSV(mapData, fareConfig)
+    showExport = false
+  }
+
   function handleImportFile(e: Event) {
     const input = e.target as HTMLInputElement
     const file = input.files?.[0]
@@ -158,6 +166,13 @@
           <div>
             <div class="item-title">JSON 数据</div>
             <div class="item-desc">可重新导入编辑</div>
+          </div>
+        </button>
+        <button class="dropdown-item" on:click={exportFareTable}>
+          <span class="icon">💴</span>
+          <div>
+            <div class="item-title">票价表 CSV</div>
+            <div class="item-desc">导出所有站点间票价</div>
           </div>
         </button>
       </div>

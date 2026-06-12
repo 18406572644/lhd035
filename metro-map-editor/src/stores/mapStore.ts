@@ -1,6 +1,6 @@
 import { writable, derived, get } from 'svelte/store'
-import type { MetroMapData, Station, MetroLine, ViewState, ToolMode, StationDetail, ValidationResult, ValidationRuleConfig, ValidationIssue, EditorConfig, DraggingState, AlignmentGuides } from '../types'
-import { DEFAULT_VALIDATION_RULES, DEFAULT_EDITOR_CONFIG } from '../types'
+import type { MetroMapData, Station, MetroLine, ViewState, ToolMode, StationDetail, ValidationResult, ValidationRuleConfig, ValidationIssue, EditorConfig, DraggingState, AlignmentGuides, FareConfig, DiscountPeriod, FareRuleType } from '../types'
+import { DEFAULT_VALIDATION_RULES, DEFAULT_EDITOR_CONFIG, DEFAULT_FARE_CONFIG } from '../types'
 import { generateId } from '../utils/path'
 import { getSampleData, saveMapData, loadMapData } from '../utils/storage'
 import { validateMapData, fixIssue } from '../utils/validation'
@@ -366,3 +366,141 @@ export const alignmentGuidesStore = writable<AlignmentGuides>({
   snapVertical: null,
   snapHorizontal: null
 })
+
+const FARE_CONFIG_KEY = 'metro_fare_config'
+
+function loadFareConfig(): FareConfig {
+  try {
+    const saved = localStorage.getItem(FARE_CONFIG_KEY)
+    if (saved) {
+      const savedConfig = JSON.parse(saved) as Partial<FareConfig>
+      return { ...DEFAULT_FARE_CONFIG, ...savedConfig }
+    }
+  } catch (e) {
+    console.error('Failed to load fare config:', e)
+  }
+  return { ...DEFAULT_FARE_CONFIG }
+}
+
+export const fareConfigStore = writable<FareConfig>(loadFareConfig())
+
+fareConfigStore.subscribe(config => {
+  try {
+    localStorage.setItem(FARE_CONFIG_KEY, JSON.stringify(config))
+  } catch (e) {
+    console.error('Failed to save fare config:', e)
+  }
+})
+
+export function setFareRuleType(ruleType: FareRuleType) {
+  fareConfigStore.update(config => ({ ...config, ruleType }))
+}
+
+export function updateDistanceFareConfig(updates: Partial<FareConfig['distanceConfig']>) {
+  fareConfigStore.update(config => ({
+    ...config,
+    distanceConfig: { ...config.distanceConfig, ...updates }
+  }))
+}
+
+export function updateStationCountFareConfig(updates: Partial<FareConfig['stationCountConfig']>) {
+  fareConfigStore.update(config => ({
+    ...config,
+    stationCountConfig: { ...config.stationCountConfig, ...updates }
+  }))
+}
+
+export function addStationCountTier(maxStations: number, price: number) {
+  fareConfigStore.update(config => ({
+    ...config,
+    stationCountConfig: {
+      ...config.stationCountConfig,
+      tiers: [...config.stationCountConfig.tiers, { maxStations, price }]
+        .sort((a, b) => a.maxStations - b.maxStations)
+    }
+  }))
+}
+
+export function removeStationCountTier(index: number) {
+  fareConfigStore.update(config => ({
+    ...config,
+    stationCountConfig: {
+      ...config.stationCountConfig,
+      tiers: config.stationCountConfig.tiers.filter((_, i) => i !== index)
+    }
+  }))
+}
+
+export function updateStationCountTier(index: number, updates: { maxStations?: number; price?: number }) {
+  fareConfigStore.update(config => ({
+    ...config,
+    stationCountConfig: {
+      ...config.stationCountConfig,
+      tiers: config.stationCountConfig.tiers.map((tier, i) =>
+        i === index ? { ...tier, ...updates } : tier
+      )
+    }
+  }))
+}
+
+export function updateLineFareConfig(updates: Partial<FareConfig['lineConfig']>) {
+  fareConfigStore.update(config => ({
+    ...config,
+    lineConfig: { ...config.lineConfig, ...updates }
+  }))
+}
+
+export function setLinePrice(lineId: string, price: number) {
+  fareConfigStore.update(config => ({
+    ...config,
+    lineConfig: {
+      ...config.lineConfig,
+      linePrices: { ...config.lineConfig.linePrices, [lineId]: price }
+    }
+  }))
+}
+
+export function removeLinePrice(lineId: string) {
+  fareConfigStore.update(config => {
+    const newLinePrices = { ...config.lineConfig.linePrices }
+    delete newLinePrices[lineId]
+    return {
+      ...config,
+      lineConfig: { ...config.lineConfig, linePrices: newLinePrices }
+    }
+  })
+}
+
+export function updateTransferFareConfig(updates: Partial<FareConfig['transferConfig']>) {
+  fareConfigStore.update(config => ({
+    ...config,
+    transferConfig: { ...config.transferConfig, ...updates }
+  }))
+}
+
+export function addDiscountPeriod(period: DiscountPeriod) {
+  fareConfigStore.update(config => ({
+    ...config,
+    discountPeriods: [...config.discountPeriods, period]
+  }))
+}
+
+export function removeDiscountPeriod(periodId: string) {
+  fareConfigStore.update(config => ({
+    ...config,
+    discountPeriods: config.discountPeriods.filter(p => p.id !== periodId)
+  }))
+}
+
+export function updateDiscountPeriod(periodId: string, updates: Partial<DiscountPeriod>) {
+  fareConfigStore.update(config => ({
+    ...config,
+    discountPeriods: config.discountPeriods.map(p =>
+      p.id === periodId ? { ...p, ...updates } : p
+    )
+  }))
+}
+
+export function resetFareConfig() {
+  fareConfigStore.set({ ...DEFAULT_FARE_CONFIG })
+}

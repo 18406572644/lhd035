@@ -1,7 +1,8 @@
 <script lang="ts">
   import { fly } from 'svelte/transition'
-  import { selectedStationIdStore, mapStore } from '../stores/mapStore'
-  import type { StationDetail as StationDetailType, ExitInfo } from '../types'
+  import { selectedStationIdStore, mapStore, fareConfigStore } from '../stores/mapStore'
+  import type { StationDetail as StationDetailType, ExitInfo, StationFareRange } from '../types'
+  import { getFarePriceRange, getStationFareRanges } from '../utils/fare'
 
   let detail: StationDetailType | null = null
   let isEditing = false
@@ -9,12 +10,23 @@
   let editDescription = ''
   let editExits: ExitInfo[] = []
   let mapData: any = null
+  let fareConfig: any = null
   let selectedStationId: string | null = null
+  let fareRanges: StationFareRange[] = []
+  let farePriceRange = { minPrice: 0, maxPrice: 0, avgPrice: 0 }
+  let showAllFares = false
 
   const unsubscribeMap = mapStore.subscribe(data => {
     mapData = data
     if (selectedStationId) {
       updateDetail(selectedStationId)
+    }
+  })
+
+  const unsubscribeFare = fareConfigStore.subscribe(config => {
+    fareConfig = config
+    if (selectedStationId && mapData) {
+      updateFareInfo(selectedStationId)
     }
   })
 
@@ -33,7 +45,14 @@
       const lines = mapData?.lines?.filter((l: any) => l.stationIds.includes(stationId)) || []
       detail = { station, lines }
       isEditing = false
+      updateFareInfo(stationId)
     }
+  }
+
+  function updateFareInfo(stationId: string) {
+    if (!mapData || !fareConfig) return
+    farePriceRange = getFarePriceRange(mapData, stationId, fareConfig)
+    fareRanges = getStationFareRanges(mapData, stationId, fareConfig)
   }
 
   function close() {
@@ -87,8 +106,12 @@
     const transferLines = isTransfer ? detail.lines.map(l => l.id) : undefined
     mapStore.updateStation(detail.station.id, {
       isTransfer,
-      transferLines: transferLines?.length > 1 ? transferLines : undefined
+      transferLines: transferLines && transferLines.length > 1 ? transferLines : undefined
     })
+  }
+
+  function toggleShowAllFares() {
+    showAllFares = !showAllFares
   }
 </script>
 
@@ -147,6 +170,39 @@
             X: {Math.round(detail.station.x)} · Y: {Math.round(detail.station.y)}
           </div>
         </div>
+
+        {#if fareRanges.length > 0}
+          <div class="section">
+            <div class="section-title">票价区间</div>
+            <div class="fare-summary">
+              <div class="fare-item">
+                <span class="fare-label">最低</span>
+                <span class="fare-value">¥{farePriceRange.minPrice.toFixed(2)}</span>
+              </div>
+              <div class="fare-item">
+                <span class="fare-label">最高</span>
+                <span class="fare-value">¥{farePriceRange.maxPrice.toFixed(2)}</span>
+              </div>
+              <div class="fare-item">
+                <span class="fare-label">平均</span>
+                <span class="fare-value">¥{farePriceRange.avgPrice.toFixed(2)}</span>
+              </div>
+            </div>
+            <button class="toggle-fares-btn" on:click={toggleShowAllFares}>
+              {showAllFares ? '收起票价列表' : '查看全部票价'}
+            </button>
+            {#if showAllFares}
+              <div class="fare-list">
+                {#each fareRanges as fare}
+                  <div class="fare-list-item">
+                    <span class="fare-station">{fare.stationName}</span>
+                    <span class="fare-price">¥{fare.minPrice.toFixed(2)}</span>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+          </div>
+        {/if}
       {:else}
         <div class="edit-form">
           <div class="form-item">
@@ -184,15 +240,13 @@
                 <div class="exit-edit-item">
                   <input
                     type="text"
-                    value={exit.name}
-                    on:input={(e) => updateExitName(index, e.target.value)}
+                    bind:value={exit.name}
                     placeholder="出口名称"
                     class="exit-name-input"
                   />
                   <input
                     type="text"
-                    value={exit.description}
-                    on:input={(e) => updateExitDesc(index, e.target.value)}
+                    bind:value={exit.description}
                     placeholder="描述（可选）"
                     class="exit-desc-input"
                   />
@@ -566,5 +620,81 @@
   .save-btn:disabled {
     background: #ccc;
     cursor: not-allowed;
+  }
+
+  .fare-summary {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .fare-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 10px 8px;
+    background: #f5f8fa;
+    border-radius: 8px;
+  }
+
+  .fare-label {
+    font-size: 11px;
+    color: #999;
+    margin-bottom: 4px;
+  }
+
+  .fare-value {
+    font-size: 16px;
+    font-weight: 600;
+    color: #0065B3;
+  }
+
+  .toggle-fares-btn {
+    width: 100%;
+    padding: 8px;
+    background: transparent;
+    border: 1px dashed #d9d9d9;
+    color: #666;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s;
+  }
+
+  .toggle-fares-btn:hover {
+    border-color: #0065B3;
+    color: #0065B3;
+  }
+
+  .fare-list {
+    margin-top: 10px;
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid #f0f0f0;
+    border-radius: 6px;
+  }
+
+  .fare-list-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    font-size: 13px;
+    border-bottom: 1px solid #f5f5f5;
+  }
+
+  .fare-list-item:last-child {
+    border-bottom: none;
+  }
+
+  .fare-station {
+    color: #333;
+  }
+
+  .fare-price {
+    color: #0065B3;
+    font-weight: 500;
   }
 </style>

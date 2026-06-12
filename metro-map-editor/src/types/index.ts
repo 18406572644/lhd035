@@ -265,3 +265,127 @@ export interface SimulationState {
   selectedTrainId: string | null
   brokenTrainIds: string[]
 }
+
+export type FareRuleType = 'distance' | 'station_count' | 'by_line'
+
+export interface DistanceFareConfig {
+  basePrice: number
+  baseDistance: number
+  unitPrice: number
+  unitDistance: number
+}
+
+export interface StationCountFareConfig {
+  tiers: { maxStations: number; price: number }[]
+  defaultPrice: number
+}
+
+export interface LineFareConfig {
+  linePrices: Record<string, number>
+  defaultLinePrice: number
+  basePrice: number
+}
+
+export interface TransferFareConfig {
+  enabled: boolean
+  feePerTransfer: number
+  maxTransferFee?: number
+  freeTransferCount?: number
+}
+
+export interface DiscountPeriod {
+  id: string
+  name: string
+  startTime: number
+  endTime: number
+  discountRate: number
+}
+
+export interface FareConfig {
+  ruleType: FareRuleType
+  distanceConfig: DistanceFareConfig
+  stationCountConfig: StationCountFareConfig
+  lineConfig: LineFareConfig
+  transferConfig: TransferFareConfig
+  discountPeriods: DiscountPeriod[]
+}
+
+export const DEFAULT_FARE_CONFIG: FareConfig = {
+  ruleType: 'station_count',
+  distanceConfig: {
+    basePrice: 3,
+    baseDistance: 6000,
+    unitPrice: 1,
+    unitDistance: 2000
+  },
+  stationCountConfig: {
+    tiers: [
+      { maxStations: 3, price: 2 },
+      { maxStations: 6, price: 3 },
+      { maxStations: 10, price: 4 },
+      { maxStations: 15, price: 5 }
+    ],
+    defaultPrice: 6
+  },
+  lineConfig: {
+    linePrices: {},
+    defaultLinePrice: 3,
+    basePrice: 2
+  },
+  transferConfig: {
+    enabled: false,
+    feePerTransfer: 1,
+    freeTransferCount: 0
+  },
+  discountPeriods: []
+}
+
+export interface PathSegment {
+  lineId: string
+  lineName: string
+  fromStationId: string
+  toStationId: string
+  stationCount: number
+  distance: number
+}
+
+export interface RouteResult {
+  totalDistance: number
+  totalStations: number
+  transferCount: number
+  segments: PathSegment[]
+  stationIds: string[]
+  lineIds: string[]
+}
+
+export interface FareCalculationResult {
+  basePrice: number
+  transferFee: number
+  discount: number
+  finalPrice: number
+  route: RouteResult
+  discountApplied?: DiscountPeriod
+  breakdown: {
+    description: string
+    amount: number
+  }[]
+}
+
+export interface StationFareRange {
+  stationId: string
+  stationName: string
+  minPrice: number
+  maxPrice: number
+  avgPrice: number
+}
+
+export interface FareTableEntry {
+  fromStationId: string
+  fromStationName: string
+  toStationId: string
+  toStationName: string
+  price: number
+  distance: number
+  stationCount: number
+  transferCount: number
+}

@@ -3,10 +3,13 @@ export interface Station {
   name: string
   x: number
   y: number
+  z?: number
   isTransfer: boolean
   transferLines?: string[]
   exits?: ExitInfo[]
   description?: string
+  depth?: number
+  stationFloors?: number
 }
 
 export interface ExitInfo {
@@ -19,6 +22,8 @@ export interface MetroLine {
   name: string
   color: string
   stationIds: string[]
+  tunnelRadius?: number
+  tunnelDepth?: number
 }
 
 export interface MetroMapData {
@@ -80,3 +85,35 @@ export const DEFAULT_VALIDATION_RULES: ValidationRuleConfig[] = [
   { id: 'duplicate-station-name-in-line', name: '线路内站名重复', description: '检测同一线路内重复的站点名称', severity: 'warning', enabled: true },
   { id: 'circular-line', name: '环形线路检测', description: '检测起点站与终点站相同的环形线路', severity: 'info', enabled: true }
 ]
+
+export type ViewMode3D = 'topdown' | 'side' | 'panorama' | 'firstperson'
+
+export interface CameraPreset {
+  name: string
+  mode: ViewMode3D
+  position: { x: number; y: number; z: number }
+  target: { x: number; y: number; z: number }
+  fov?: number
+}
+
+export interface Scene3DConfig {
+  showGround: boolean
+  showBuildings: boolean
+  showTunnels: boolean
+  showTrains: boolean
+  trainSpeed: number
+  tunnelOpacity: number
+  ambientLightIntensity: number
+  directionalLightIntensity: number
+}
+
+export const DEFAULT_SCENE_3D_CONFIG: Scene3DConfig = {
+  showGround: true,
+  showBuildings: true,
+  showTunnels: true,
+  showTrains: true,
+  trainSpeed: 1,
+  tunnelOpacity: 0.7,
+  ambientLightIntensity: 0.6,
+  directionalLightIntensity: 0.8
+}

@@ -5,17 +5,48 @@
   import LinePanel from './components/LinePanel.svelte'
   import StationDetail from './components/StationDetail.svelte'
   import ValidationPanel from './components/ValidationPanel.svelte'
-  import { selectedStationIdStore } from './stores/mapStore'
+  import Scene3D from './components/Scene3D.svelte'
+  import ControlPanel3D from './components/ControlPanel3D.svelte'
+  import { selectedStationIdStore, isSimulatingStore } from './stores/mapStore'
+  import type { Scene3DConfig, ViewMode3D } from './types'
+  import { DEFAULT_SCENE_3D_CONFIG } from './types'
 
   let showSidebar = true
   let selectedStationId: string | null = null
+  let isSimulating = false
+  let viewMode: '2d' | '3d' = '2d'
+  let scene3DConfig: Scene3DConfig = { ...DEFAULT_SCENE_3D_CONFIG }
+  let scene3DComponent: Scene3D
 
-  const unsubscribe = selectedStationIdStore.subscribe(id => {
+  const unsubscribeStation = selectedStationIdStore.subscribe(id => {
     selectedStationId = id
+  })
+
+  const unsubscribeSim = isSimulatingStore.subscribe(v => {
+    isSimulating = v
   })
 
   function toggleSidebar() {
     showSidebar = !showSidebar
+  }
+
+  function switchTo2D() {
+    viewMode = '2d'
+  }
+
+  function switchTo3D() {
+    viewMode = '3d'
+    setTimeout(() => {
+      scene3DComponent?.refreshScene()
+    }, 50)
+  }
+
+  function handleCameraPreset(mode: ViewMode3D) {
+    scene3DComponent?.setCameraPreset(mode)
+  }
+
+  function toggleSimulation() {
+    isSimulatingStore.update(v => !v)
   }
 </script>
 
@@ -32,17 +63,59 @@
 
     <aside class="sidebar" class:collapsed={!showSidebar}>
       <div class="sidebar-content">
-        <div class="sidebar-main">
-          <LinePanel />
-        </div>
-        <ValidationPanel />
+        {#if viewMode === '2d'}
+          <div class="sidebar-main">
+            <LinePanel />
+          </div>
+          <ValidationPanel />
+        {:else}
+          <ControlPanel3D
+            bind:config={scene3DConfig}
+            {isSimulating}
+            onCameraPreset={handleCameraPreset}
+            onToggleSimulation={toggleSimulation}
+          />
+        {/if}
       </div>
     </aside>
 
     <main class="map-area">
-      <MetroMap />
-      <Toolbar />
-      <StationDetail />
+      {#if viewMode === '2d'}
+        <MetroMap />
+        <Toolbar />
+        <StationDetail />
+      {:else}
+        <Scene3D bind:this={scene3DComponent} config={scene3DConfig} />
+      {/if}
+
+      <div class="view-switcher">
+        <button
+          class="view-btn"
+          class:active={viewMode === '2d'}
+          on:click={switchTo2D}
+          title="2D 编辑模式"
+        >
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <line x1="3" y1="12" x2="21" y2="12" />
+            <line x1="12" y1="3" x2="12" y2="21" />
+          </svg>
+          <span>2D</span>
+        </button>
+        <button
+          class="view-btn"
+          class:active={viewMode === '3d'}
+          on:click={switchTo3D}
+          title="3D 可视化模式"
+        >
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5z" />
+            <path d="M2 17l10 5 10-5" />
+            <path d="M2 12l10 5 10-5" />
+          </svg>
+          <span>3D</span>
+        </button>
+      </div>
     </main>
   </div>
 </div>
@@ -112,6 +185,7 @@
     height: 100%;
     display: flex;
     flex-direction: column;
+    overflow-y: auto;
   }
 
   .sidebar-main {
@@ -125,5 +199,47 @@
     flex: 1;
     position: relative;
     overflow: hidden;
+  }
+
+  .view-switcher {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 0;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
+    overflow: hidden;
+    z-index: 20;
+  }
+
+  .view-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border: none;
+    background: white;
+    color: #666;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.2s;
+  }
+
+  .view-btn:hover {
+    background: #f0f5ff;
+    color: #0065B3;
+  }
+
+  .view-btn.active {
+    background: #0065B3;
+    color: white;
+  }
+
+  .view-btn.active:hover {
+    background: #005290;
   }
 </style>

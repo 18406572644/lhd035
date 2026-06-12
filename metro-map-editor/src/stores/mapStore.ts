@@ -1,7 +1,9 @@
-import { writable, derived } from 'svelte/store'
-import type { MetroMapData, Station, MetroLine, ViewState, ToolMode, StationDetail } from '../types'
+import { writable, derived, get } from 'svelte/store'
+import type { MetroMapData, Station, MetroLine, ViewState, ToolMode, StationDetail, ValidationResult, ValidationRuleConfig, ValidationIssue } from '../types'
+import { DEFAULT_VALIDATION_RULES } from '../types'
 import { generateId } from '../utils/path'
 import { getSampleData, saveMapData, loadMapData } from '../utils/storage'
+import { validateMapData, fixIssue } from '../utils/validation'
 
 function createMapStore() {
   const savedData = loadMapData()
@@ -233,4 +235,79 @@ export function zoomIn() {
 
 export function zoomOut() {
   viewStore.update(v => ({ ...v, scale: Math.max(v.scale / 1.2, 0.2) }))
+}
+
+const VALIDATION_RULES_KEY = 'metro_validation_rules'
+
+function loadValidationRules(): ValidationRuleConfig[] {
+  try {
+    const saved = localStorage.getItem(VALIDATION_RULES_KEY)
+    if (saved) {
+      const savedRules = JSON.parse(saved) as ValidationRuleConfig[]
+      const defaultRules = [...DEFAULT_VALIDATION_RULES]
+      return defaultRules.map(rule => {
+        const saved = savedRules.find(r => r.id === rule.id)
+        return saved ? { ...rule, enabled: saved.enabled, severity: saved.severity } : rule
+      })
+    }
+  } catch (e) {
+    console.error('Failed to load validation rules:', e)
+  }
+  return [...DEFAULT_VALIDATION_RULES]
+}
+
+export const validationRulesStore = writable<ValidationRuleConfig[]>(loadValidationRules())
+
+validationRulesStore.subscribe(rules => {
+  try {
+    localStorage.setItem(VALIDATION_RULES_KEY, JSON.stringify(rules))
+  } catch (e) {
+    console.error('Failed to save validation rules:', e)
+  }
+})
+
+export const validationResultStore = derived<
+  [typeof mapStore, typeof validationRulesStore],
+  ValidationResult
+>([mapStore, validationRulesStore], ([$map, $rules]) => {
+  return validateMapData($map, $rules)
+})
+
+export function toggleValidationRule(ruleId: string) {
+  validationRulesStore.update(rules =>
+    rules.map(r => (r.id === ruleId ? { ...r, enabled: !r.enabled } : r))
+  )
+}
+
+export function setValidationRuleSeverity(ruleId: string, severity: 'error' | 'warning' | 'info') {
+  validationRulesStore.update(rules =>
+    rules.map(r => (r.id === ruleId ? { ...r, severity } : r))
+  )
+}
+
+export function resetValidationRules() {
+  validationRulesStore.set([...DEFAULT_VALIDATION_RULES])
+}
+
+export function fixValidationIssue(issue: ValidationIssue) {
+  const currentData = get(mapStore)
+  const fixedData = fixIssue(currentData, issue)
+  if (fixedData) {
+    mapStore.set(fixedData)
+  }
+}
+
+export function fixAllValidationIssues() {
+  const result = get(validationResultStore)
+  const fixableIssues = result.issues.filter(i => i.fixable)
+  if (fixableIssues.length === 0) return
+
+  let currentData = get(mapStore)
+  for (const issue of fixableIssues) {
+    const fixed = fixIssue(currentData, issue)
+    if (fixed) {
+      currentData = fixed
+    }
+  }
+  mapStore.set(currentData)
 }

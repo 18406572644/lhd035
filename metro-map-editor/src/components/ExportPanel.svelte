@@ -1,12 +1,24 @@
 <script lang="ts">
-  import { mapStore } from '../stores/mapStore'
+  import { get } from 'svelte/store'
+  import { mapStore, validationResultStore } from '../stores/mapStore'
   import { getSampleData, mockFetchMapData, clearMapData, saveMapData } from '../utils/storage'
 
   let showExport = false
   let showImport = false
   let importError = ''
 
+  function checkExportErrors(): boolean {
+    const result = get(validationResultStore)
+    if (result.errorCount > 0) {
+      return confirm(
+        `当前存在 ${result.errorCount} 个错误级别的数据问题，导出的导出可能导致异常。\n\n确定要继续导出吗？`
+      )
+    }
+    return true
+  }
+
   async function exportAsSVG() {
+    if (!checkExportErrors()) return
     const svg = document.querySelector('.metro-svg') as SVGSVGElement
     if (!svg) return
 
@@ -23,7 +35,8 @@
   }
 
   function exportAsJSON() {
-    const data = mapStore
+    if (!checkExportErrors()) return
+    const data = get(mapStore)
     const jsonStr = JSON.stringify(data, null, 2)
     const blob = new Blob([jsonStr], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
@@ -37,6 +50,7 @@
   }
 
   function exportAsPNG() {
+    if (!checkExportErrors()) return
     const svg = document.querySelector('.metro-svg') as SVGSVGElement
     if (!svg) return
 

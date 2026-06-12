@@ -4,6 +4,7 @@
   import Toolbar from './components/Toolbar.svelte'
   import LinePanel from './components/LinePanel.svelte'
   import StationDetail from './components/StationDetail.svelte'
+  import ValidationPanel from './components/ValidationPanel.svelte'
   import { selectedStationIdStore } from './stores/mapStore'
 
   let showSidebar = true
@@ -31,7 +32,10 @@
 
     <aside class="sidebar" class:collapsed={!showSidebar}>
       <div class="sidebar-content">
-        <LinePanel />
+        <div class="sidebar-main">
+          <LinePanel />
+        </div>
+        <ValidationPanel />
       </div>
     </aside>
 
@@ -106,6 +110,13 @@
   .sidebar-content {
     width: 280px;
     height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .sidebar-main {
+    flex: 1;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
   }

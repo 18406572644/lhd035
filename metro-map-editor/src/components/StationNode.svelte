@@ -1,12 +1,15 @@
 <script lang="ts">
-  import { selectedStationIdStore, toolModeStore, mapStore, highlightStationIdStore } from '../stores/mapStore'
-  import type { Station } from '../types'
+  import { onDestroy } from 'svelte'
+  import { selectedStationIdStore, toolModeStore, mapStore, highlightStationIdStore, validationResultStore } from '../stores/mapStore'
+  import type { Station, ValidationSeverity } from '../types'
 
   export let station: Station
 
   let isSelected = false
   let isHighlighted = false
   let toolMode: string = 'select'
+  let hasIssue = false
+  let highestSeverity: ValidationSeverity | null = null
 
   const unsubscribeSelected = selectedStationIdStore.subscribe(id => {
     isSelected = id === station.id
@@ -18,6 +21,25 @@
 
   const unsubscribeHighlight = highlightStationIdStore.subscribe(id => {
     isHighlighted = id === station.id
+  })
+
+  const unsubscribeValidation = validationResultStore.subscribe(result => {
+    const stationIssues = result.issues.filter(
+      i => i.targetType === 'station' && i.targetId === station.id
+    )
+    hasIssue = stationIssues.length > 0
+    if (hasIssue) {
+      const severities = stationIssues.map(i => i.severity)
+      if (severities.includes('error')) {
+        highestSeverity = 'error'
+      } else if (severities.includes('warning')) {
+        highestSeverity = 'warning'
+      } else {
+        highestSeverity = 'info'
+      }
+    } else {
+      highestSeverity = null
+    }
   })
 
   function handleClick(e: Event) {
@@ -35,6 +57,13 @@
     if (toolMode !== 'edit') return
     e.stopPropagation()
   }
+
+  onDestroy(() => {
+    unsubscribeSelected()
+    unsubscribeTool()
+    unsubscribeHighlight()
+    unsubscribeValidation()
+  })
 </script>
 
 <g
@@ -42,6 +71,10 @@
   class:selected={isSelected}
   class:highlighted={isHighlighted}
   class:transfer={station.isTransfer}
+  class:has-issue={hasIssue}
+  class:issue-error={highestSeverity === 'error'}
+  class:issue-warning={highestSeverity === 'warning'}
+  class:issue-info={highestSeverity === 'info'}
   transform={`translate(${station.x}, ${station.y})`}
   on:click={handleClick}
   on:mousedown={handleMouseDown}
@@ -71,6 +104,13 @@
   {#if isHighlighted}
     <circle r="18" fill="none" stroke="#ff9800" stroke-width="3" class="highlight-ring" />
     <circle r="22" fill="none" stroke="#ff9800" stroke-width="2" opacity="0.4" class="highlight-ring-outer" />
+  {/if}
+
+  {#if hasIssue}
+    <g class="issue-indicator">
+      <circle r="8" class="issue-bg" />
+      <text class="issue-icon" text-anchor="middle" dominant-baseline="central">!</text>
+    </g>
   {/if}
 </g>
 
@@ -128,6 +168,55 @@
     50% {
       opacity: 0;
       r: 28;
+    }
+  }
+
+  .issue-indicator {
+    transform: translate(10px, -10px);
+  }
+
+  .issue-bg {
+    fill: #ff4d4f;
+  }
+
+  .issue-icon {
+    fill: white;
+    font-size: 10px;
+    font-weight: bold;
+    font-family: Arial, sans-serif;
+  }
+
+  .station-node.issue-warning .issue-bg {
+    fill: #faad14;
+  }
+
+  .station-node.issue-info .issue-bg {
+    fill: #1890ff;
+  }
+
+  .station-node.has-issue circle:first-of-type {
+    stroke: #ff4d4f;
+    stroke-width: 3;
+  }
+
+  .station-node.issue-warning circle:first-of-type {
+    stroke: #faad14;
+  }
+
+  .station-node.issue-info circle:first-of-type {
+    stroke: #1890ff;
+  }
+
+  .station-node.has-issue .issue-indicator {
+    animation: issue-bounce 1s ease-in-out infinite;
+  }
+
+  @keyframes issue-bounce {
+    0%, 100% {
+      transform: translate(10px, -10px) scale(1);
+    }
+    50% {
+      transform: translate(10px, -10px) scale(1.2);
     }
   }
 </style>

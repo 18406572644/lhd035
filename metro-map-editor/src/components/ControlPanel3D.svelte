@@ -1,11 +1,14 @@
 <script lang="ts">
-  import type { Scene3DConfig, ViewMode3D } from '../types'
+  import type { Scene3DConfig, ViewMode3D, MetroLine } from '../types'
   import { DEFAULT_SCENE_3D_CONFIG } from '../types'
 
   export let config: Scene3DConfig = { ...DEFAULT_SCENE_3D_CONFIG }
   export let isSimulating: boolean = false
+  export let lines: MetroLine[] = []
   export let onCameraPreset: (mode: ViewMode3D) => void = () => {}
   export let onToggleSimulation: () => void = () => {}
+  export let onLineSelect: (lineId: string | null) => void = () => {}
+  export let currentViewMode: ViewMode3D | null = null
 
   const viewModes: { mode: ViewMode3D; label: string; icon: string }[] = [
     { mode: 'topdown', label: '俯视图', icon: '⊤' },
@@ -13,6 +16,17 @@
     { mode: 'panorama', label: '全景', icon: '◎' },
     { mode: 'firstperson', label: '第一人称', icon: '◉' }
   ]
+
+  function handleCameraPreset(mode: ViewMode3D) {
+    onCameraPreset(mode)
+  }
+
+  function handleLineChange(event: Event) {
+    const target = event.target as HTMLSelectElement
+    const lineId = target.value || null
+    config.firstPersonLineId = lineId
+    onLineSelect(lineId)
+  }
 </script>
 
 <div class="control-panel-3d">
@@ -22,7 +36,8 @@
       {#each viewModes as vm}
         <button
           class="view-mode-btn"
-          on:click={() => onCameraPreset(vm.mode)}
+          class:active={currentViewMode === vm.mode}
+          on:click={() => handleCameraPreset(vm.mode)}
           title={vm.label}
         >
           <span class="view-icon">{vm.icon}</span>
@@ -31,6 +46,39 @@
       {/each}
     </div>
   </div>
+
+  {#if currentViewMode === 'firstperson'}
+    <div class="panel-section">
+      <h3 class="section-title">第一人称设置</h3>
+      <div class="line-selector">
+        <label class="selector-label" for="fp-line-select">选择线路</label>
+        <select
+          id="fp-line-select"
+          class="line-select"
+          value={config.firstPersonLineId || ''}
+          on:change={handleLineChange}
+          disabled={lines.length === 0}
+        >
+          <option value="">-- 请选择线路 --</option>
+          {#each lines as line}
+            <option value={line.id} style="color: {line.color};">
+              🚇 {line.name} ({line.stationIds.length}站)
+            </option>
+          {/each}
+        </select>
+      </div>
+      <label class="toggle-item">
+        <input type="checkbox" bind:checked={config.firstPersonFollowTrain} />
+        <span>跟随列车移动</span>
+      </label>
+      {#if config.firstPersonLineId}
+        <div class="selected-line-info">
+          <span class="line-color-dot" style="background: {lines.find(l => l.id === config.firstPersonLineId)?.color};"></span>
+          <span>当前线路: {lines.find(l => l.id === config.firstPersonLineId)?.name}</span>
+        </div>
+      {/if}
+    </div>
+  {/if}
 
   <div class="panel-section">
     <button
@@ -129,6 +177,9 @@
       <li>右键拖拽：平移</li>
       <li>滚轮：缩放</li>
       <li>拖拽站点：调整深度</li>
+      {#if currentViewMode === 'firstperson'}
+        <li class="fp-hint">选择线路并开启模拟即可体验驾驶室视角</li>
+      {/if}
     </ul>
   </div>
 </div>
@@ -182,6 +233,12 @@
     background: #f0f5ff;
   }
 
+  .view-mode-btn.active {
+    border-color: #0065B3;
+    background: #e6f0ff;
+    box-shadow: 0 0 0 2px rgba(0, 101, 179, 0.2);
+  }
+
   .view-icon {
     font-size: 18px;
     color: #0065B3;
@@ -191,6 +248,58 @@
   .view-label {
     font-size: 11px;
     color: #666;
+  }
+
+  .line-selector {
+    margin-bottom: 10px;
+  }
+
+  .selector-label {
+    display: block;
+    font-size: 12px;
+    color: #666;
+    margin-bottom: 4px;
+    font-weight: 500;
+  }
+
+  .line-select {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 13px;
+    background: white;
+    cursor: pointer;
+  }
+
+  .line-select:focus {
+    outline: none;
+    border-color: #0065B3;
+  }
+
+  .line-select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .selected-line-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    padding: 6px 8px;
+    background: #e6f0ff;
+    border-radius: 4px;
+    font-size: 12px;
+    color: #0065B3;
+  }
+
+  .line-color-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid white;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1);
   }
 
   .sim-btn {
@@ -284,5 +393,10 @@
     font-size: 12px;
     color: #8c6d00;
     line-height: 1.8;
+  }
+
+  .fp-hint {
+    color: #0065B3;
+    font-weight: 500;
   }
 </style>

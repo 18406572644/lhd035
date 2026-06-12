@@ -105,6 +105,8 @@ export interface Scene3DConfig {
   tunnelOpacity: number
   ambientLightIntensity: number
   directionalLightIntensity: number
+  firstPersonLineId: string | null
+  firstPersonFollowTrain: boolean
 }
 
 export const DEFAULT_SCENE_3D_CONFIG: Scene3DConfig = {
@@ -115,5 +117,7 @@ export const DEFAULT_SCENE_3D_CONFIG: Scene3DConfig = {
   trainSpeed: 1,
   tunnelOpacity: 0.7,
   ambientLightIntensity: 0.6,
-  directionalLightIntensity: 0.8
+  directionalLightIntensity: 0.8,
+  firstPersonLineId: null,
+  firstPersonFollowTrain: true
 }

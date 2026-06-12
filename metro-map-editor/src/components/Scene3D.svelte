@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy, afterUpdate } from 'svelte'
+  import { onMount, onDestroy } from 'svelte'
   import * as THREE from 'three'
   import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
   import { mapStore, isSimulatingStore } from '../stores/mapStore'
@@ -48,10 +48,18 @@
   let directionalLight: THREE.DirectionalLight
 
   let lastConfig: Scene3DConfig
+  let currentViewMode: ViewMode3D | null = null
+  let firstPersonLineId: string | null = null
+  let firstPersonSmoothPos = new THREE.Vector3()
+  let firstPersonSmoothLook = new THREE.Vector3()
+  let isFirstPersonInitialized = false
 
   const LOD_HIGH_DISTANCE = 25
   const LOD_MEDIUM_DISTANCE = 50
   const STATION_STOP_DURATION = 2.5
+  const FP_CAMERA_HEIGHT = 2.8
+  const FP_CAMERA_FORWARD = 0.3
+  const FP_SMOOTHING = 0.15
 
   const unsubscribeMap = mapStore.subscribe(data => {
     mapData = data
@@ -68,7 +76,7 @@
     scene.fog = new THREE.FogExp2(0x0f1020, 0.004)
 
     camera = new THREE.PerspectiveCamera(
-      60,
+      75,
       container.clientWidth / container.clientHeight,
       0.1,
       2000
@@ -132,6 +140,7 @@
     clearGroup(environmentGroup)
     trainCurves.clear()
     trainData.clear()
+    isFirstPersonInitialized = false
 
     if (config.showGround) {
       environmentGroup.add(buildGroundPlane(mapData))
@@ -183,6 +192,11 @@
       const stationMesh = buildStationMesh(station, mapData.lines, 'high')
       stationGroup.add(stationMesh)
     }
+
+    if (!firstPersonLineId && mapData.lines.length > 0) {
+      firstPersonLineId = mapData.lines[0].id
+      config.firstPersonLineId = firstPersonLineId
+    }
   }
 
   function clearGroup(group: THREE.Group) {
@@ -233,7 +247,6 @@
       if (stationCount < 2) continue
 
       const stationProgresses: number[] = []
-      const totalLength = curve.getLength()
       for (let i = 0; i < stationCount; i++) {
         stationProgresses.push(i / (stationCount - 1))
       }
@@ -273,8 +286,51 @@
     }
   }
 
+  function updateFirstPersonCamera(delta: number) {
+    if (currentViewMode !== 'firstperson' || !config.firstPersonFollowTrain) {
+      return
+    }
+
+    const lineId = firstPersonLineId || config.firstPersonLineId
+    if (!lineId) return
+
+    const trains = trainData.get(lineId)
+    if (!trains || trains.length === 0) return
+
+    const primaryTrain = trains[0]
+    const trainMesh = primaryTrain.mesh
+
+    const trainPos = trainMesh.position.clone()
+    const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(trainMesh.quaternion)
+
+    const targetPos = new THREE.Vector3()
+      .copy(trainPos)
+      .add(forward.clone().multiplyScalar(FP_CAMERA_FORWARD))
+      .add(new THREE.Vector3(0, FP_CAMERA_HEIGHT, 0))
+
+    const targetLook = new THREE.Vector3()
+      .copy(trainPos)
+      .add(forward.clone().multiplyScalar(30))
+      .add(new THREE.Vector3(0, FP_CAMERA_HEIGHT - 0.5, 0))
+
+    if (!isFirstPersonInitialized) {
+      firstPersonSmoothPos.copy(targetPos)
+      firstPersonSmoothLook.copy(targetLook)
+      isFirstPersonInitialized = true
+    }
+
+    const smoothing = Math.min(1, FP_SMOOTHING * delta * 60)
+    firstPersonSmoothPos.lerp(targetPos, smoothing)
+    firstPersonSmoothLook.lerp(targetLook, smoothing)
+
+    controls.enabled = false
+    camera.position.copy(firstPersonSmoothPos)
+    camera.lookAt(firstPersonSmoothLook)
+    controls.target.copy(firstPersonSmoothLook)
+  }
+
   function updateLOD() {
-    if (!camera || !mapData) return
+    if (!camera || !mapData || currentViewMode === 'firstperson') return
 
     const cameraPos = camera.position
 
@@ -318,7 +374,7 @@
   }
 
   function onMouseClick(event: MouseEvent) {
-    if (isDragging) return
+    if (isDragging || currentViewMode === 'firstperson') return
     const rect = renderer.domElement.getBoundingClientRect()
     mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
     mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
@@ -340,7 +396,7 @@
   }
 
   function onMouseDown(event: MouseEvent) {
-    if (event.button !== 0) return
+    if (event.button !== 0 || currentViewMode === 'firstperson') return
     const rect = renderer.domElement.getBoundingClientRect()
     mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
     mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
@@ -369,7 +425,7 @@
   }
 
   function onMouseMove(event: MouseEvent) {
-    if (!dragTarget) return
+    if (!dragTarget || currentViewMode === 'firstperson') return
     isDragging = true
 
     const rect = renderer.domElement.getBoundingClientRect()
@@ -395,7 +451,9 @@
     }
     dragTarget = null
     isDragging = false
-    controls.enabled = true
+    if (currentViewMode !== 'firstperson') {
+      controls.enabled = true
+    }
   }
 
   function onResize() {
@@ -414,7 +472,11 @@
     lastTime = time
 
     updateTrains(delta)
-    controls.update()
+    updateFirstPersonCamera(delta)
+
+    if (currentViewMode !== 'firstperson') {
+      controls.update()
+    }
 
     lodTimer += delta
     if (lodTimer > 0.2) {
@@ -427,6 +489,13 @@
 
   export function setCameraPreset(mode: ViewMode3D) {
     if (!mapData || !camera || !controls) return
+
+    currentViewMode = mode
+    isFirstPersonInitialized = false
+
+    if (mode !== 'firstperson') {
+      controls.enabled = true
+    }
 
     const center = new THREE.Vector3()
     let count = 0
@@ -453,20 +522,80 @@
         targetLook = new THREE.Vector3(center.x, -4, center.z)
         break
       case 'firstperson': {
-        const firstStation = mapData.stations.find(s => s.isTransfer) || mapData.stations[0]
-        if (firstStation) {
-          const pos = stationTo3D(firstStation, mapData.lines)
-          targetPos = new THREE.Vector3(pos.x, pos.y + 2.5, pos.z)
-          targetLook = new THREE.Vector3(pos.x - 30, pos.y + 2, pos.z)
+        const lineId = firstPersonLineId || config.firstPersonLineId
+        const line = lineId ? mapData.lines.find(l => l.id === lineId) : null
+
+        if (line && line.stationIds.length >= 2) {
+          const firstStationId = line.stationIds[0]
+          const firstStation = mapData.stations.find(s => s.id === firstStationId)
+          if (firstStation) {
+            const pos = stationTo3D(firstStation, mapData.lines)
+            const curve = trainCurves.get(line.id)
+            if (curve) {
+              const tangent = curve.getTangentAt(0)
+              targetPos = new THREE.Vector3(pos.x, pos.y + FP_CAMERA_HEIGHT, pos.z)
+              targetLook = new THREE.Vector3().copy(pos).add(tangent.multiplyScalar(30))
+              targetLook.y = pos.y + FP_CAMERA_HEIGHT - 0.5
+            } else {
+              targetPos = new THREE.Vector3(pos.x, pos.y + FP_CAMERA_HEIGHT, pos.z)
+              targetLook = new THREE.Vector3(pos.x + 30, pos.y + FP_CAMERA_HEIGHT - 0.5, pos.z)
+            }
+          } else {
+            targetPos = new THREE.Vector3(center.x, center.y + FP_CAMERA_HEIGHT, center.z)
+            targetLook = new THREE.Vector3(center.x + 30, center.y + FP_CAMERA_HEIGHT - 0.5, center.z)
+          }
         } else {
-          targetPos = new THREE.Vector3(center.x, center.y + 2, center.z)
-          targetLook = center.clone()
+          const firstStation = mapData.stations.find(s => s.isTransfer) || mapData.stations[0]
+          if (firstStation) {
+            const pos = stationTo3D(firstStation, mapData.lines)
+            targetPos = new THREE.Vector3(pos.x, pos.y + FP_CAMERA_HEIGHT, pos.z)
+            targetLook = new THREE.Vector3(pos.x - 30, pos.y + FP_CAMERA_HEIGHT - 0.5, pos.z)
+          } else {
+            targetPos = new THREE.Vector3(center.x, center.y + FP_CAMERA_HEIGHT, center.z)
+            targetLook = center.clone()
+          }
         }
         break
       }
     }
 
-    animateCamera(targetPos!, targetLook!)
+    if (mode === 'firstperson' && config.firstPersonFollowTrain) {
+      firstPersonSmoothPos.copy(targetPos!)
+      firstPersonSmoothLook.copy(targetLook!)
+      camera.position.copy(targetPos!)
+      camera.lookAt(targetLook!)
+      controls.target.copy(targetLook!)
+    } else {
+      animateCamera(targetPos!, targetLook!)
+    }
+  }
+
+  export function setFirstPersonLine(lineId: string | null) {
+    firstPersonLineId = lineId
+    config.firstPersonLineId = lineId
+    isFirstPersonInitialized = false
+
+    if (currentViewMode === 'firstperson' && lineId && mapData) {
+      const line = mapData.lines.find(l => l.id === lineId)
+      if (line && line.stationIds.length >= 2) {
+        const firstStationId = line.stationIds[0]
+        const firstStation = mapData.stations.find(s => s.id === firstStationId)
+        if (firstStation) {
+          const pos = stationTo3D(firstStation, mapData.lines)
+          const curve = trainCurves.get(line.id)
+          const tangent = curve ? curve.getTangentAt(0) : new THREE.Vector3(1, 0, 0)
+          const targetPos = new THREE.Vector3(pos.x, pos.y + FP_CAMERA_HEIGHT, pos.z)
+          const targetLook = new THREE.Vector3().copy(pos).add(tangent.multiplyScalar(30))
+          targetLook.y = pos.y + FP_CAMERA_HEIGHT - 0.5
+
+          firstPersonSmoothPos.copy(targetPos)
+          firstPersonSmoothLook.copy(targetLook)
+          camera.position.copy(targetPos)
+          camera.lookAt(targetLook)
+          controls.target.copy(targetLook)
+        }
+      }
+    }
   }
 
   function animateCamera(targetPosition: THREE.Vector3, targetLookAt: THREE.Vector3) {
@@ -508,6 +637,11 @@
         }
       }
 
+      const firstPersonLineChanged = lastConfig && config.firstPersonLineId !== lastConfig.firstPersonLineId
+      if (firstPersonLineChanged) {
+        setFirstPersonLine(config.firstPersonLineId)
+      }
+
       const showGroundChanged = lastConfig && config.showGround !== lastConfig.showGround
       const showBuildingsChanged = lastConfig && config.showBuildings !== lastConfig.showBuildings
       const showTunnelsChanged = lastConfig && config.showTunnels !== lastConfig.showTunnels
@@ -544,7 +678,21 @@
   })
 </script>
 
-<div class="scene-3d-container" bind:this={container}></div>
+<div class="scene-3d-container" bind:this={container}>
+  {#if currentViewMode === 'firstperson' && config.firstPersonFollowTrain && firstPersonLineId}
+    <div class="fp-hud">
+      <div class="fp-info">
+        {#if mapData}
+          {#each mapData.lines.filter(l => l.id === firstPersonLineId) as line}
+            <span class="fp-line-dot" style="background: {line.color};"></span>
+            <span class="fp-line-name">{line.name}</span>
+          {/each}
+        {/if}
+        <span class="fp-mode-indicator">第一人称视角</span>
+      </div>
+    </div>
+  {/if}
+</div>
 
 <style>
   .scene-3d-container {
@@ -561,5 +709,45 @@
 
   .scene-3d-container :global(canvas:active) {
     cursor: grabbing;
+  }
+
+  .fp-hud {
+    position: absolute;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    pointer-events: none;
+  }
+
+  .fp-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 16px;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(8px);
+    border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .fp-line-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.8);
+  }
+
+  .fp-line-name {
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .fp-mode-indicator {
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 12px;
+    padding-left: 10px;
+    border-left: 1px solid rgba(255, 255, 255, 0.2);
   }
 </style>

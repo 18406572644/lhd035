@@ -7,16 +7,22 @@
   import ValidationPanel from './components/ValidationPanel.svelte'
   import Scene3D from './components/Scene3D.svelte'
   import ControlPanel3D from './components/ControlPanel3D.svelte'
-  import { selectedStationIdStore, isSimulatingStore } from './stores/mapStore'
-  import type { Scene3DConfig, ViewMode3D } from './types'
+  import { selectedStationIdStore, isSimulatingStore, mapStore } from './stores/mapStore'
+  import type { Scene3DConfig, ViewMode3D, MetroMapData, MetroLine } from './types'
   import { DEFAULT_SCENE_3D_CONFIG } from './types'
 
   let showSidebar = true
   let selectedStationId: string | null = null
   let isSimulating = false
   let viewMode: '2d' | '3d' = '2d'
+  let current3DViewMode: ViewMode3D | null = null
   let scene3DConfig: Scene3DConfig = { ...DEFAULT_SCENE_3D_CONFIG }
   let scene3DComponent: Scene3D
+  let mapData: MetroMapData | null = null
+
+  const unsubscribeMap = mapStore.subscribe(data => {
+    mapData = data
+  })
 
   const unsubscribeStation = selectedStationIdStore.subscribe(id => {
     selectedStationId = id
@@ -42,12 +48,21 @@
   }
 
   function handleCameraPreset(mode: ViewMode3D) {
+    current3DViewMode = mode
     scene3DComponent?.setCameraPreset(mode)
+  }
+
+  function handleLineSelect(lineId: string | null) {
+    if (lineId && current3DViewMode === 'firstperson') {
+      scene3DComponent?.setFirstPersonLine(lineId)
+    }
   }
 
   function toggleSimulation() {
     isSimulatingStore.update(v => !v)
   }
+
+  $: linesForPanel = mapData?.lines || []
 </script>
 
 <div class="app-container">
@@ -72,8 +87,11 @@
           <ControlPanel3D
             bind:config={scene3DConfig}
             {isSimulating}
+            lines={linesForPanel}
+            currentViewMode={current3DViewMode}
             onCameraPreset={handleCameraPreset}
             onToggleSimulation={toggleSimulation}
+            onLineSelect={handleLineSelect}
           />
         {/if}
       </div>
